@@ -40,8 +40,7 @@
 #define PASS_LEN 20 /* only the 1st 8 chars will be used by crypt() though */
 #define BUFSIZE 1000
 #define ROOM_NAME_LEN 30
-#define ROOM_DESC_LEN 810 /* 10 lines of 80 chars each + 10 nl */
-#define ROOM_LINES (ROOM_DESC_LEN/81)-1
+#define ROOM_LINES 9
 #define TOPIC_LEN 60
 #define MAPTYPE_LEN 6
 #define MAX_LINKS 10
@@ -120,7 +119,6 @@ UR_OBJECT user_first,user_last;
 struct room_struct {
 	char name[ROOM_NAME_LEN+1];
 	char label[ROOM_NAME_LEN+1];
-	char desc[ROOM_DESC_LEN+1];
 	char topic[TOPIC_LEN+1];
 	char maptype[MAPTYPE_LEN+1];
 	char revbuff[REVIEW_LINES][REVIEW_LEN+2];
