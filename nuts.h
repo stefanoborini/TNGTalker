@@ -15,6 +15,7 @@
 #define MAILSPOOL "mailspool"
 #define CONFIGFILE "config"
 #define ROOMCONFIG "roomconfig"
+#define CHANNELCONFIG "channelconfig"
 #define NEWSFILE "newsfile"
 #define MAPFILE "mapfile"
 #define SITEBAN "siteban"
@@ -35,6 +36,7 @@
 
 #define USER_NAME_LEN 12
 #define USER_DESC_LEN 30
+#define MAX_USER_CHANNEL 10
 #define AFK_MESG_LEN 60
 #define PHRASE_LEN 40
 #define PASS_LEN 20 /* only the 1st 8 chars will be used by crypt() though */
@@ -51,6 +53,7 @@
 #define REVTELL_LINES 15
 #define REVSHOUT_LINES 15
 #define REVIEW_LEN 200
+
 /* DNL (Date Number Length) will have to become 12 on Sun Sep 9 02:46:40 2001 
    when all the unix timers will flip to 1000000000 :) */
 #define DNL 11 
@@ -96,6 +99,7 @@ struct user_struct {
 	char sex;
 	int path;
 	char macro[USER_NAME_LEN+1];
+	struct channel_struct *channel[MAX_USER_CHANNEL];
 /**************************/
 	char in_phrase[PHRASE_LEN+1],out_phrase[PHRASE_LEN+1];
 	char buff[BUFSIZE],site[81],last_site[81],page_file[81];
@@ -106,7 +110,7 @@ struct user_struct {
 	int vis,ignall,prompt,command_mode,muzzled,charmode_echo; 
 	int level,misc_op,remote_com,edit_line,charcnt,warned;
 	int accreq,last_login_len,ignall_store,clone_hear,afk;
-	int edit_op,colour,ignshout,igntell,revline;
+	int edit_op,colour,igntell,revline;
 	time_t last_input,last_login,total_login,read_mail,mtime;
 	char *malloc_start,*malloc_end;
 	struct netlink_struct *netlink,*pot_netlink;
@@ -170,6 +174,23 @@ typedef struct netlink_struct *NL_OBJECT;
 NL_OBJECT nl_first,nl_last;
 NL_OBJECT create_netlink();
 
+struct channel_struct {
+	char name[WORD_LEN+1];
+	char long_name[WORD_LEN+1];
+	char phrase[PHRASE_LEN+1];
+	char phraseto[PHRASE_LEN+1];
+	char join[PHRASE_LEN*2+1];
+	char unjoin[PHRASE_LEN*2+1];
+	char revshout[REVSHOUT_LINES][REVIEW_LEN+2];
+	int revline;
+	struct channel_struct *next;
+	};
+
+typedef struct channel_struct *CH_OBJECT;
+CH_OBJECT ch_first,ch_last;
+CH_OBJECT create_channel();
+
+
 char *syserror="Sorry, a system error has occured";
 char *nosuchroom="There is no such room.\n";
 char *nosuchuser="There is no such user.\n";
@@ -201,8 +222,8 @@ char *emochar_array[]={
 };
 
 char *command[]={
-"quit",    "look",     "mode",      "say",    "shout",
-"tell",    "emote",     "semote", "pemote", "echo",
+"quit",    "look",     "mode",      "say",
+"tell",    "emote",                 "pemote", "echo",
 "go",      "ignall",   "prompt",    "desc",   "inphr",
 "outphr",  "public",   "private",   "letmein","invite",
 "topic",   "move",     "bcast",     "who",    "people",
@@ -221,18 +242,17 @@ char *command[]={
 "myclones","allclones","switch",    "csay",   "chear",
 */
 "rstat",   "swban",    "afk",       "cls",    "colour",
-"ignshout","igntell",  "suicide",   "delete", "reboot",
+           "igntell",  "suicide",   "delete", "reboot",
 "recount", "revtell",  "doc",       "sto",    "room", 
 "path",    "level",    "hulk",      "undo",   "aspect",
-"join",    "macro",    "see",       "send",   "revsh",
-"clrsh",   "*"
+"join",    "macro",    "see",       "send",   "*"
 };
 
 
 /* Values of commands , used in switch in exec_com() */
 enum comvals {
-QUIT,     LOOK,     MODE,     SAY,    SHOUT,
-TELL,     EMOTE,    SEMOTE, PEMOTE,   ECHO,
+QUIT,     LOOK,     MODE,     SAY,   
+TELL,     EMOTE,              PEMOTE,   ECHO,
 GO,       IGNALL,   PROMPT,   DESC,   INPHRASE,
 OUTPHRASE,PUBCOM,   PRIVCOM,  LETMEIN,INVITE,
 TOPIC,    MOVE,     BCAST,    WHO,    PEOPLE,
@@ -251,19 +271,18 @@ CREATE, DESTROY,
 MYCLONES, ALLCLONES,SWITCH,   CSAY,   CHEAR,
 */
 RSTAT,    SWBAN,    AFK,      CLS,    COLOUR,
-IGNSHOUT, IGNTELL,  SUICIDE,  DELETE, REBOOT,
+          IGNTELL,  SUICIDE,  DELETE, REBOOT,
 RECOUNT,  REVTELL,  DOC,      STO,    ROOM, 
 PATH,     LEVEL,    HULK,     UNDO,   ASPECT,
-JOIN,     MACRO,    SEE,      SEND,   REVSH,
-CLRSH
+JOIN,     MACRO,    SEE,      SEND
 } com_num;
 
 
 /* These are the minimum levels at which the commands can be executed. 
    Alter to suit. */
 int com_level[]={
-NEW, NEW, NEW, NEW, USER,
-APPR,USER,HELPER,HELPER,MAGHETTO,
+NEW, NEW, NEW, NEW,
+APPR,USER,HELPER,MAGHETTO,
 APPR,USER,NEW, APPR,HELPER,
 HELPER,USER,USER,HELPER,MAGHETTO,
 HELPER,PROMOTER,WIZ,NEW,WIZ,
@@ -282,11 +301,10 @@ ARCH,ARCH,
 ARCH,USER,ARCH,ARCH,ARCH,
 */
 ARCH,ARCH,APPR,NEW,NEW,
-USER,USER,NEW,ARCH, SYSOP,
+     USER,NEW,ARCH, SYSOP,
 GOD, APPR,USER,APPR,HELPER,
 USER,APPR,GOD, ARCH,APPR,
-APPR,APPR,HELPER,HELPER,APPR,
-MAGHETTO
+APPR,APPR,HELPER,HELPER
 };
 
 /* 
@@ -362,8 +380,6 @@ int time_out_afks,allow_caps_in_name,rs_countdown;
 int charecho_def,time_out_maxlevel;
 time_t rs_announce,rs_which;
 UR_OBJECT rs_user;
-char revshout[REVSHOUT_LINES][REVIEW_LEN+2];
-int revline;
 
 
 extern char *sys_errlist[];
