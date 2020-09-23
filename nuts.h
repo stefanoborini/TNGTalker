@@ -3,7 +3,8 @@
 #define DATAFILES "datafiles"  
 #define FILEDIR   "filedir"   
 #define LOGDIR    "logdir"
-#define MACRODIR  "macrodir"
+#define GLOBALMACRO  "gmacro"
+#define MACRODIR "macrodir"
 #define ROOMFILE  "roomfile"
 #define RESMAPTYPE "resmaptype"
 #define ACCOUNTFILE "accountfile"
@@ -33,6 +34,7 @@
 
 #define USER_NAME_LEN 12
 #define USER_DESC_LEN 30
+#define MAX_SHOUT_CHANNEL 10
 #define AFK_MESG_LEN 60
 #define PHRASE_LEN 40
 #define PASS_LEN 20 /* only the 1st 8 chars will be used by crypt() though */
@@ -47,7 +49,7 @@
 #define SITE_NAME_LEN 80
 #define VERIFY_LEN 20
 #define REVIEW_LINES 15
-#define REVTELL_LINES 5
+#define REVTELL_LINES 15
 #define REVIEW_LEN 200
 /* DNL (Date Number Length) will have to become 12 on Sun Sep 9 02:46:40 2001 
    when all the unix timers will flip to 1000000000 :) */
@@ -93,6 +95,7 @@ struct user_struct {
 /***** nuove aggiunte *****/
 	char sex;
 	int path;
+	char macro[USER_NAME_LEN+1];
 /**************************/
 	char in_phrase[PHRASE_LEN+1],out_phrase[PHRASE_LEN+1];
 	char buff[BUFSIZE],site[81],last_site[81],page_file[81];
@@ -107,7 +110,7 @@ struct user_struct {
 	time_t last_input,last_login,total_login,read_mail,mtime;
 	char *malloc_start,*malloc_end;
 	struct netlink_struct *netlink,*pot_netlink;
-	struct user_struct *prev,*next,*owner, *macro;
+	struct user_struct *prev,*next,*owner;
 	};
 
 typedef struct user_struct* UR_OBJECT;
@@ -191,11 +194,11 @@ char *level_type[MAX_LEVEL_TYPE+1]={
 };
 
 char *emotions_array[]={
-"empty","smiling", "*"
+"smiling", "with a grin","*"
 };
 
 char *emochar_array[]={
-"empty",":)","*"
+":)","gr","*"
 };
 
 char *command[]={
@@ -222,7 +225,7 @@ char *command[]={
 "ignshout","igntell",  "suicide",   "delete", "reboot",
 "recount", "revtell",  "doc",       "sto",    "room", 
 "path",    "level",    "hulk",      "undo",   "aspect",
-"join",    "macro", "*"
+"join", "macro", "*"
 };
 
 
@@ -251,7 +254,7 @@ RSTAT,    SWBAN,    AFK,      CLS,    COLOUR,
 IGNSHOUT, IGNTELL,  SUICIDE,  DELETE, REBOOT,
 RECOUNT,  REVTELL,  DOC,      STO,    ROOM, 
 PATH,     LEVEL,    HULK,     UNDO,   ASPECT,
-JOIN,     MACRO
+JOIN, MACRO
 } com_num;
 
 
@@ -281,7 +284,7 @@ ARCH,ARCH,APPR,NEW,NEW,
 USER,USER,NEW,ARCH, SYSOP,
 GOD, APPR,USER,APPR,HELPER,
 USER,APPR,GOD, ARCH,APPR,
-APPR,SYSOP
+APPR,USER
 };
 
 /* 
@@ -338,7 +341,7 @@ char *swear_words[]={
 char verification[SERV_NAME_LEN+1];
 char text[ARR_SIZE*2];
 char word[MAX_WORDS][WORD_LEN+1];
-char wrd[8][81];
+char wrd[8][MAX_LINKS*(ROOM_NAME_LEN+1)];
 char progname[40],confile[40];
 time_t boot_time;
 jmp_buf jmpvar;
