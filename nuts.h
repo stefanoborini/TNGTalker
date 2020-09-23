@@ -5,6 +5,7 @@
 #define LOGDIR    "logdir"
 #define GLOBALMACRO  "gmacro"
 #define MACRODIR "macrodir"
+#define BANNERDIR "bannerdir"
 #define ROOMFILE  "roomfile"
 #define RESMAPTYPE "resmaptype"
 #define ACCOUNTFILE "accountfile"
@@ -34,12 +35,11 @@
 
 #define USER_NAME_LEN 12
 #define USER_DESC_LEN 30
-#define MAX_SHOUT_CHANNEL 10
 #define AFK_MESG_LEN 60
 #define PHRASE_LEN 40
 #define PASS_LEN 20 /* only the 1st 8 chars will be used by crypt() though */
 #define BUFSIZE 1000
-#define ROOM_NAME_LEN 20
+#define ROOM_NAME_LEN 30
 #define ROOM_DESC_LEN 810 /* 10 lines of 80 chars each + 10 nl */
 #define ROOM_LINES (ROOM_DESC_LEN/81)-1
 #define TOPIC_LEN 60
@@ -225,7 +225,7 @@ char *command[]={
 "ignshout","igntell",  "suicide",   "delete", "reboot",
 "recount", "revtell",  "doc",       "sto",    "room", 
 "path",    "level",    "hulk",      "undo",   "aspect",
-"join", "macro", "test", "*"
+"join",    "macro",    "see",       "send",   "*"
 };
 
 
@@ -254,7 +254,7 @@ RSTAT,    SWBAN,    AFK,      CLS,    COLOUR,
 IGNSHOUT, IGNTELL,  SUICIDE,  DELETE, REBOOT,
 RECOUNT,  REVTELL,  DOC,      STO,    ROOM, 
 PATH,     LEVEL,    HULK,     UNDO,   ASPECT,
-JOIN, MACRO, TEST
+JOIN,     MACRO,    SEE,      SEND
 } com_num;
 
 
@@ -268,7 +268,7 @@ HELPER,USER,USER,HELPER,MAGHETTO,
 HELPER,PROMOTER,WIZ,NEW,WIZ,
 NEW, SYSOP, NEW,APPR, USER,
 WIZ, HELPER,APPR,USER, APPR,
-SYSOP, APPR, APPR,APPR,HELPER,
+GOD, APPR, APPR,APPR,HELPER,
 APPR,APPR,MAGHETTO,MAGHETTO,ARCH,
 ARCH,ARCH,ARCH,NEW,ARCH,
 PROMOTER,PROMOTER,MAGHETTO,ARCH,ARCH,
@@ -284,7 +284,7 @@ ARCH,ARCH,APPR,NEW,NEW,
 USER,USER,NEW,ARCH, SYSOP,
 GOD, APPR,USER,APPR,HELPER,
 USER,APPR,GOD, ARCH,APPR,
-APPR,USER,USER
+APPR,USER,HELPER,HELPER
 };
 
 /* 
@@ -363,6 +363,4 @@ UR_OBJECT rs_user;
 
 extern char *sys_errlist[];
 char *long_date();
-
-int email_socket;
 
