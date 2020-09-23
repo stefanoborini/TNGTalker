@@ -103,6 +103,7 @@ struct user_struct {
 	char macro[USER_NAME_LEN+1];
 	struct channel_struct *channel[MAX_USER_CHANNEL];
 	char alias[MAX_USER_ALIAS][USER_NAME_LEN+1];
+	struct room_struct *temp_room;
 /**************************/
 	char in_phrase[PHRASE_LEN+1],out_phrase[PHRASE_LEN+1];
 	char buff[BUFSIZE],site[81],last_site[81],page_file[81];
