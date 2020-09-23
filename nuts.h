@@ -235,7 +235,7 @@ char *command[]={
 "version", "rmail",    "smail",     "dmail",  "from",
 "entpro",  "examine",  "rmst",      "rmsn",   "netstat",
 "netdata", "connect",  "disconnect","passwd", "kill",
-"promote", "demote",   "listbans",  "ban",    "unban",
+"promote", "demote",   "lbans",     "ban",    "unban",
 "vis",     "invis",    "site",      "wake",   "wizshout",
 "muzzle",  "unmuzzle", "map",       "logging","minlogin",
 "system",  "charecho", "clearline", "fix",    "unfix",
@@ -245,11 +245,11 @@ char *command[]={
 "myclones","allclones","switch",    "csay",   "chear",
 */
 "rstat",   "swban",    "afk",       "cls",    "colour",
-"channel",    "igntell",  "suicide",   "delete", "reboot",
+"channel", "igntell",  "suicide",   "delete", "reboot",
 "recount", "revtell",  "doc",       "sto",    "room", 
 "path",    "level",    "hulk",      "undo",   "aspect",
 "join",    "macro",    "see",       "send",   "ignbanner",
-"*"
+"list",    "*"
 };
 
 
@@ -278,7 +278,8 @@ RSTAT,    SWBAN,    AFK,      CLS,    COLOUR,
 SHCH,     IGNTELL,  SUICIDE,  DELETE, REBOOT,
 RECOUNT,  REVTELL,  DOC,      STO,    ROOM, 
 PATH,     LEVEL,    HULK,     UNDO,   ASPECT,
-JOIN,     MACRO,    SEE,      SEND,   IGNBANNER
+JOIN,     MACRO,    SEE,      SEND,   IGNBANNER,
+LIST
 } com_num;
 
 
@@ -308,7 +309,8 @@ ARCH,ARCH,APPR,NEW,NEW,
 ADVANCED,USER,NEW,ARCH, SYSOP,
 GOD, APPR,USER,APPR,HELPER,
 USER,APPR,GOD, ARCH,APPR,
-APPR,APPR,HELPER,HELPER,APPR
+APPR,APPR,HELPER,HELPER,APPR,
+APPR
 };
 
 /* 
