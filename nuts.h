@@ -225,7 +225,7 @@ char *command[]={
 "ignshout","igntell",  "suicide",   "delete", "reboot",
 "recount", "revtell",  "doc",       "sto",    "room", 
 "path",    "level",    "hulk",      "undo",   "aspect",
-"join", "macro", "*"
+"join", "macro", "test", "*"
 };
 
 
@@ -254,7 +254,7 @@ RSTAT,    SWBAN,    AFK,      CLS,    COLOUR,
 IGNSHOUT, IGNTELL,  SUICIDE,  DELETE, REBOOT,
 RECOUNT,  REVTELL,  DOC,      STO,    ROOM, 
 PATH,     LEVEL,    HULK,     UNDO,   ASPECT,
-JOIN, MACRO
+JOIN, MACRO, TEST
 } com_num;
 
 
@@ -284,7 +284,7 @@ ARCH,ARCH,APPR,NEW,NEW,
 USER,USER,NEW,ARCH, SYSOP,
 GOD, APPR,USER,APPR,HELPER,
 USER,APPR,GOD, ARCH,APPR,
-APPR,USER
+APPR,USER,USER
 };
 
 /* 
@@ -363,3 +363,6 @@ UR_OBJECT rs_user;
 
 extern char *sys_errlist[];
 char *long_date();
+
+int email_socket;
+
