@@ -9,7 +9,6 @@
 #define ROOMFILE  "roomfile"
 #define RESMAPTYPE "resmaptype"
 #define ACCOUNTFILE "accountfile"
-#define NICKFILE    "nickfile"
 #define USERFILES "userfiles"
 #define HELPFILES "helpfiles"
 #define MAILSPOOL "mailspool"
@@ -81,7 +80,6 @@
 #define TOSYS 0
 #define TOACCOUNT 1
 #define TOROOM 2
-#define TONICK 3
 
 #define USER_TYPE 0
 #define CLONE_TYPE 1
@@ -247,7 +245,7 @@ char *command[]={
 "myclones","allclones","switch",    "csay",   "chear",
 */
 "rstat",   "swban",    "afk",       "cls",    "colour",
-           "igntell",  "suicide",   "delete", "reboot",
+"channel",    "igntell",  "suicide",   "delete", "reboot",
 "recount", "revtell",  "doc",       "sto",    "room", 
 "path",    "level",    "hulk",      "undo",   "aspect",
 "join",    "macro",    "see",       "send",   "ignbanner",
@@ -277,7 +275,7 @@ CREATE, DESTROY,
 MYCLONES, ALLCLONES,SWITCH,   CSAY,   CHEAR,
 */
 RSTAT,    SWBAN,    AFK,      CLS,    COLOUR,
-          IGNTELL,  SUICIDE,  DELETE, REBOOT,
+SHCH,     IGNTELL,  SUICIDE,  DELETE, REBOOT,
 RECOUNT,  REVTELL,  DOC,      STO,    ROOM, 
 PATH,     LEVEL,    HULK,     UNDO,   ASPECT,
 JOIN,     MACRO,    SEE,      SEND,   IGNBANNER
@@ -307,7 +305,7 @@ ARCH,ARCH,
 ARCH,USER,ARCH,ARCH,ARCH,
 */
 ARCH,ARCH,APPR,NEW,NEW,
-     USER,NEW,ARCH, SYSOP,
+ADVANCED,USER,NEW,ARCH, SYSOP,
 GOD, APPR,USER,APPR,HELPER,
 USER,APPR,GOD, ARCH,APPR,
 APPR,APPR,HELPER,HELPER,APPR
