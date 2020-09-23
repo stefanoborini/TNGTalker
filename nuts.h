@@ -23,6 +23,7 @@
 #define SYSLOG "syslog"
 #define MOTD1 "motd1"
 #define MOTD2 "motd2"
+#define USERDATA "userdata"
 
 #define OUT_BUFF_SIZE 1000
 #define MAX_WORDS 10
@@ -30,13 +31,14 @@
 #define ARR_SIZE 1000
 #define MAX_LINES 15
 #define NUM_COLS 21
-#define MAX_LEVEL_TYPE 5
+#define MAX_LEVEL_TYPE 6
 #define NUM_OF_LEVELS 11
 #define ASPECT_LINES 3
 
 #define USER_NAME_LEN 12
 #define USER_DESC_LEN 30
 #define MAX_USER_CHANNEL 10
+#define MAX_USER_ALIAS 10
 #define AFK_MESG_LEN 60
 #define PHRASE_LEN 40
 #define PASS_LEN 20 /* only the 1st 8 chars will be used by crypt() though */
@@ -100,6 +102,7 @@ struct user_struct {
 	int path;
 	char macro[USER_NAME_LEN+1];
 	struct channel_struct *channel[MAX_USER_CHANNEL];
+	char alias[MAX_USER_ALIAS][USER_NAME_LEN+1];
 /**************************/
 	char in_phrase[PHRASE_LEN+1],out_phrase[PHRASE_LEN+1];
 	char buff[BUFSIZE],site[81],last_site[81],page_file[81];
@@ -110,7 +113,7 @@ struct user_struct {
 	int vis,ignall,prompt,command_mode,muzzled,charmode_echo; 
 	int level,misc_op,remote_com,edit_line,charcnt,warned;
 	int accreq,last_login_len,ignall_store,clone_hear,afk;
-	int edit_op,colour,igntell,revline;
+	int edit_op,colour,igntell,ignbanner,revline;
 	time_t last_input,last_login,total_login,read_mail,mtime;
 	char *malloc_start,*malloc_end;
 	struct netlink_struct *netlink,*pot_netlink;
@@ -206,11 +209,12 @@ char *level_name[MAX_LEVEL_TYPE+1][NUM_OF_LEVELS+1]={
 {"NEW","APPR","Mozzo","Vedetta","Armiere","Timoniere","Nostromo","Ufficiale","Corsaro","Ammiraglio","Sysop","*"},
 {"NEW","APPR","Paggio","Scudiero","Apprendista","Armigero","Cavaliere","Condottiero","Chierico","Master","Sysop","*"},
 {"NEW","APPR","Seminarista","Diacono","Prete","Vicario","Vescovo","Arcivescovo","Cardinale","Papa","Sysop","*"},
-{"NEW","APPR","Civile","Cadetto","Guardiamarina","Tenente","Consigliere","Comandante","Capitano","Ammiraglio","Sysop","*"}
+{"NEW","APPR","Civile","Cadetto","Guardiamarina","Tenente","Consigliere","Comandante","Capitano","Ammiraglio","Sysop","*"},
+{"NEW","APPR","Lustrascarpe","Sguattero","Lavapiatti","Facchino","Spazzacamino","Bidello","Cerimoniere","Maitre","Sysop","*"}
 };
 
 char *level_type[MAX_LEVEL_TYPE+1]={
-"Default", "Radioamatoriale","Corsaro","Dungeons & Dragons","Ecclesiastico","Star Trek - The Next Generation"
+"Default", "Radioamatoriale","Corsaro","Dungeons & Dragons","Ecclesiastico","Star Trek - The Next Generation","Povero"
 };
 
 char *emotions_array[]={
@@ -222,12 +226,12 @@ char *emochar_array[]={
 };
 
 char *command[]={
-"quit",    "look",     "mode",      "say",
-"tell",    "emote",                 "pemote", "echo",
+"quit",    "look",     "mode",      "say",    "unset",
+"tell",    "emote",    "set",       "pemote", "echo",
 "go",      "ignall",   "prompt",    "desc",   "inphr",
 "outphr",  "public",   "private",   "letmein","invite",
 "topic",   "move",     "bcast",     "who",    "people",
-"help",    "shutdown", "news",      "read",   "write",
+"help",    "sdown",    "news",      "read",   "write",
 "wipe",    "search",   "review",    "home",   "status",
 "version", "rmail",    "smail",     "dmail",  "from",
 "entpro",  "examine",  "rmst",      "rmsn",   "netstat",
@@ -245,14 +249,15 @@ char *command[]={
            "igntell",  "suicide",   "delete", "reboot",
 "recount", "revtell",  "doc",       "sto",    "room", 
 "path",    "level",    "hulk",      "undo",   "aspect",
-"join",    "macro",    "see",       "send",   "*"
+"join",    "macro",    "see",       "send",   "ignbanner",
+"*"
 };
 
 
 /* Values of commands , used in switch in exec_com() */
 enum comvals {
-QUIT,     LOOK,     MODE,     SAY,   
-TELL,     EMOTE,              PEMOTE,   ECHO,
+QUIT,     LOOK,     MODE,     SAY,    UNSET,
+TELL,     EMOTE,    SET,      PEMOTE, ECHO,
 GO,       IGNALL,   PROMPT,   DESC,   INPHRASE,
 OUTPHRASE,PUBCOM,   PRIVCOM,  LETMEIN,INVITE,
 TOPIC,    MOVE,     BCAST,    WHO,    PEOPLE,
@@ -274,21 +279,21 @@ RSTAT,    SWBAN,    AFK,      CLS,    COLOUR,
           IGNTELL,  SUICIDE,  DELETE, REBOOT,
 RECOUNT,  REVTELL,  DOC,      STO,    ROOM, 
 PATH,     LEVEL,    HULK,     UNDO,   ASPECT,
-JOIN,     MACRO,    SEE,      SEND
+JOIN,     MACRO,    SEE,      SEND,   IGNBANNER
 } com_num;
 
 
 /* These are the minimum levels at which the commands can be executed. 
    Alter to suit. */
 int com_level[]={
-NEW, NEW, NEW, NEW,
-APPR,USER,HELPER,MAGHETTO,
+NEW, NEW, NEW, NEW, USER,
+APPR,USER,USER,HELPER,MAGHETTO,
 APPR,USER,NEW, APPR,HELPER,
 HELPER,USER,USER,HELPER,MAGHETTO,
 HELPER,PROMOTER,WIZ,NEW,WIZ,
 NEW, SYSOP, NEW,APPR, USER,
 WIZ, HELPER,APPR,USER, APPR,
-SYSOP, APPR, APPR,APPR,HELPER,
+GOD, APPR, APPR,APPR,HELPER,
 APPR,APPR,MAGHETTO,MAGHETTO,ARCH,
 ARCH,ARCH,ARCH,NEW,ARCH,
 PROMOTER,PROMOTER,MAGHETTO,ARCH,ARCH,
@@ -304,7 +309,7 @@ ARCH,ARCH,APPR,NEW,NEW,
      USER,NEW,ARCH, SYSOP,
 GOD, APPR,USER,APPR,HELPER,
 USER,APPR,GOD, ARCH,APPR,
-APPR,APPR,HELPER,HELPER
+APPR,APPR,HELPER,HELPER,APPR
 };
 
 /* 
