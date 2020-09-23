@@ -36,6 +36,7 @@
 
 #define USER_NAME_LEN 12
 #define USER_DESC_LEN 30
+#define USER_PROMPT_LEN 30
 #define MAX_USER_CHANNEL 10
 #define MAX_USER_ALIAS 10
 #define AFK_MESG_LEN 60
@@ -102,6 +103,7 @@ struct user_struct {
 	struct channel_struct *channel[MAX_USER_CHANNEL];
 	char alias[MAX_USER_ALIAS][USER_NAME_LEN+1];
 	struct room_struct *temp_room;
+	char prompt_string[USER_PROMPT_LEN+1];
 /**************************/
 	char in_phrase[PHRASE_LEN+1],out_phrase[PHRASE_LEN+1];
 	char buff[BUFSIZE],site[81],last_site[81],page_file[81];
