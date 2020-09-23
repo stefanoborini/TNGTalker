@@ -50,6 +50,7 @@
 #define VERIFY_LEN 20
 #define REVIEW_LINES 15
 #define REVTELL_LINES 15
+#define REVSHOUT_LINES 15
 #define REVIEW_LEN 200
 /* DNL (Date Number Length) will have to become 12 on Sun Sep 9 02:46:40 2001 
    when all the unix timers will flip to 1000000000 :) */
@@ -106,7 +107,7 @@ struct user_struct {
 	int vis,ignall,prompt,command_mode,muzzled,charmode_echo; 
 	int level,misc_op,remote_com,edit_line,charcnt,warned;
 	int accreq,last_login_len,ignall_store,clone_hear,afk;
-	int edit_op,colour,ignshout,igntell,revline,wrap;
+	int edit_op,colour,ignshout,igntell,revline;
 	time_t last_input,last_login,total_login,read_mail,mtime;
 	char *malloc_start,*malloc_end;
 	struct netlink_struct *netlink,*pot_netlink;
@@ -194,11 +195,11 @@ char *level_type[MAX_LEVEL_TYPE+1]={
 };
 
 char *emotions_array[]={
-"smiling", "with a grin","*"
+"smiling", "with a grin","bored","*"
 };
 
 char *emochar_array[]={
-":)","gr","*"
+":)","gr","bo","*"
 };
 
 char *command[]={
@@ -225,7 +226,8 @@ char *command[]={
 "ignshout","igntell",  "suicide",   "delete", "reboot",
 "recount", "revtell",  "doc",       "sto",    "room", 
 "path",    "level",    "hulk",      "undo",   "aspect",
-"join",    "macro",    "see",       "send",   "*"
+"join",    "macro",    "see",       "send",   "revsh",
+"clrsh",   "*"
 };
 
 
@@ -254,7 +256,8 @@ RSTAT,    SWBAN,    AFK,      CLS,    COLOUR,
 IGNSHOUT, IGNTELL,  SUICIDE,  DELETE, REBOOT,
 RECOUNT,  REVTELL,  DOC,      STO,    ROOM, 
 PATH,     LEVEL,    HULK,     UNDO,   ASPECT,
-JOIN,     MACRO,    SEE,      SEND
+JOIN,     MACRO,    SEE,      SEND,   REVSH,
+CLRSH
 } com_num;
 
 
@@ -268,7 +271,7 @@ HELPER,USER,USER,HELPER,MAGHETTO,
 HELPER,PROMOTER,WIZ,NEW,WIZ,
 NEW, SYSOP, NEW,APPR, USER,
 WIZ, HELPER,APPR,USER, APPR,
-GOD, APPR, APPR,APPR,HELPER,
+SYSOP, APPR, APPR,APPR,HELPER,
 APPR,APPR,MAGHETTO,MAGHETTO,ARCH,
 ARCH,ARCH,ARCH,NEW,ARCH,
 PROMOTER,PROMOTER,MAGHETTO,ARCH,ARCH,
@@ -284,7 +287,8 @@ ARCH,ARCH,APPR,NEW,NEW,
 USER,USER,NEW,ARCH, SYSOP,
 GOD, APPR,USER,APPR,HELPER,
 USER,APPR,GOD, ARCH,APPR,
-APPR,USER,HELPER,HELPER
+APPR,APPR,HELPER,HELPER,APPR,
+MAGHETTO
 };
 
 /* 
@@ -360,7 +364,9 @@ int time_out_afks,allow_caps_in_name,rs_countdown;
 int charecho_def,time_out_maxlevel;
 time_t rs_announce,rs_which;
 UR_OBJECT rs_user;
+char revshout[REVSHOUT_LINES][REVIEW_LEN+2];
+int revline;
+
 
 extern char *sys_errlist[];
 char *long_date();
-
