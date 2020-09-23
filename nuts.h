@@ -100,7 +100,7 @@ struct user_struct {
 	char sex;
 	int path;
 	char macro[USER_NAME_LEN+1];
-	struct channel_struct *channel[MAX_USER_CHANNEL];
+	struct channel_struct *channel[MAX_USER_CHANNEL],*invite_channel;
 	char alias[MAX_USER_ALIAS][USER_NAME_LEN+1];
 	struct room_struct *temp_room;
 	char prompt_string[USER_PROMPT_LEN+1];
@@ -186,6 +186,7 @@ struct channel_struct {
 	char join[PHRASE_LEN*2+1];
 	char unjoin[PHRASE_LEN*2+1];
 	char revshout[REVSHOUT_LINES][REVIEW_LEN+2];
+	int crash_level;
 	int revline;
 	struct channel_struct *next;
 	};
@@ -295,7 +296,7 @@ HELPER,USER,USER,HELPER,MAGHETTO,
 HELPER,PROMOTER,WIZ,NEW,WIZ,
 NEW, SYSOP, NEW,APPR, USER,
 WIZ, HELPER,APPR,USER, APPR,
-GOD, APPR, APPR,APPR,HELPER,
+GOD, APPR, APPR,APPR,APPR,
 APPR,APPR,MAGHETTO,MAGHETTO,ARCH,
 ARCH,ARCH,ARCH,NEW,ARCH,
 PROMOTER,PROMOTER,MAGHETTO,ARCH,ARCH,
