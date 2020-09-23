@@ -37,6 +37,7 @@
 #define USER_NAME_LEN 12
 #define USER_DESC_LEN 30
 #define USER_PROMPT_LEN 30
+#define MAX_USER_SHORTCUT 10
 #define MAX_USER_CHANNEL 10
 #define MAX_USER_ALIAS 10
 #define AFK_MESG_LEN 60
@@ -104,6 +105,7 @@ struct user_struct {
 	char alias[MAX_USER_ALIAS][USER_NAME_LEN+1];
 	struct room_struct *temp_room;
 	char prompt_string[USER_PROMPT_LEN+1];
+	char shortcut[MAX_USER_SHORTCUT][WORD_LEN+1];
 /**************************/
 	char in_phrase[PHRASE_LEN+1],out_phrase[PHRASE_LEN+1];
 	char buff[BUFSIZE],site[81],last_site[81],page_file[81];
@@ -250,7 +252,7 @@ char *command[]={
 "rstat",   "swban",    "afk",       "cls",    "colour",
 "channel", "igntell",  "suicide",   "delete", "reboot",
 "recount", "revtell",  "doc",       "sto",    "room", 
-"path",    "level",    "hulk",      "undo",   "aspect",
+                       "hulk",      "undo",   "aspect",
 "join",    "macro",    "see",       "send",   "ignbanner",
 "list",    "*"
 };
@@ -280,7 +282,7 @@ MYCLONES, ALLCLONES,SWITCH,   CSAY,   CHEAR,
 RSTAT,    SWBAN,    AFK,      CLS,    COLOUR,
 SHCH,     IGNTELL,  SUICIDE,  DELETE, REBOOT,
 RECOUNT,  REVTELL,  DOC,      STO,    ROOM, 
-PATH,     LEVEL,    HULK,     UNDO,   ASPECT,
+                    HULK,     UNDO,   ASPECT,
 JOIN,     MACRO,    SEE,      SEND,   IGNBANNER,
 LIST
 } com_num;
@@ -311,7 +313,7 @@ ARCH,USER,ARCH,ARCH,ARCH,
 ARCH,ARCH,APPR,NEW,NEW,
 ADVANCED,USER,NEW,ARCH, SYSOP,
 GOD, APPR,USER,APPR,HELPER,
-USER,APPR,GOD, ARCH,APPR,
+          GOD, ARCH,APPR,
 APPR,APPR,HELPER,HELPER,APPR,
 APPR
 };
