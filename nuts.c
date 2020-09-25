@@ -49,7 +49,7 @@ int argc;
 char *argv[];
 {
 fd_set readmask; 
-int i,len,counter=0;
+int i,len,counter;
 char inpstr[ARR_SIZE];
 char *remove_first();
 UR_OBJECT user,next;
@@ -85,6 +85,22 @@ write_syslog(text,0,TOSYS);
 /**** Main program loop. *****/
 setjmp(jmpvar); /* jump to here if we crash and crash_action = IGNORE */
 while(1) {
+	counter++;
+	sprintf(text,"%d\n",counter);
+	write_user(user_last,text);
+	user=user_first;
+	while(user!=NULL) {
+		next=user->next; /* store in case user object is destructed */
+		if (user->misc_op==10) {
+				if (counter>100) {
+					run_macro(user,user->page_file);
+					counter=0;
+					}
+				}
+		user=user->next;
+		}
+
+
 	/* set up mask then wait */
 	setup_readmask(&readmask);
 	if (select(FD_SETSIZE,&readmask,0,0,0)==-1) continue;
@@ -2020,7 +2036,10 @@ switch(user->misc_op) {
 	case 9: /* aspect */
 	editor(user,inpstr,ASPECT_LINES); return 1;
 
+	case 10: /* macro */
 	return 1;
+
+
 	}
 return 0;
 }
@@ -9250,15 +9269,26 @@ UR_OBJECT user;
 char *filename;
 {
 int retval;
-char buff[OUT_BUFF_SIZE],*pun,*punb,*name,*macroname;
+char
+buff[OUT_BUFF_SIZE],*pun,*punb,*name,*macroname,dummybuff[OUT_BUFF_SIZE];
 FILE *fp;
 
 if (!(fp=fopen(filename,"r"))) return 0;
 
 text[0]='\0';
 buff[0]='\0';
+user->misc_op=0;
+
+fseek(fp,user->filepos,0);
 
 fgets(text,sizeof(text)-1,fp);
+
+user->filepos+=strlen(text);
+
+sprintf(dummybuff,"%d\n",user->filepos);
+write_user(user,dummybuff);
+
+
 
 if (user->vis) name=user->name; else name=invisname;
 
@@ -9266,7 +9296,7 @@ macroname=user->macro->name;
 
 /**** ora hai la linea... interpretala ********/
 /* copia la stringa in buff, sostituendo a %1 e %2 i nomi */
-while (!(feof(fp))) {
+while (text[0]!='#') {
 	pun=text;
 	punb=buff;
 	while (*pun!='\0') {
@@ -9278,37 +9308,46 @@ while (!(feof(fp))) {
 				pun+=2;
 				punb+=strlen(name);
 				continue;
-				}
+			}
 			if (*(pun+1)=='2') {
 				*punb='\0';
 				strcat(buff,macroname);
 				pun+=2;
 				punb+=strlen(macroname);
 				continue;
-				}
-			*punb='%';
 			}
+			*punb='%';
+		}
 		else *punb=*pun;
 		punb++;
 		pun++;
-		}
-
+	}
 	*punb='\0';
-
 	pun=&buff[1];
-
 	switch (buff[0]) {
 		case '1' : write_user(user,pun); break;
 		case '2' : write_room_except(user->room,pun,user); break;
 		case '3' : write_user(user->macro,pun); break;
 		case '4' : write_room_except2(user->room,pun,user,user->macro); break;
 		default  : write_user(user,pun); 
-		}
+	}
 	fgets(text,sizeof(text)-1,fp);
+	user->filepos+=strlen(text);
+}
+
+if (!(strcmp(text,"#pause\n"))) {
+	user->misc_op=10;
+	strcpy(user->page_file,filename);
+	user->mtime=time(0);
 	}
 
+if (!(strcmp(text,"#end\n"))) {
+	user->misc_op=0;
+	user->page_file[0]='\0';
+	user->filepos=0;
+	}
+	
 fclose(fp);
-
 return 1;
 }
 
@@ -9320,9 +9359,6 @@ return 1;
 
 void do_events()
 {
-/*
-if (user_first!=NULL) write_user(user_first,"ecco\n");
-*/
 set_date_time();
 check_reboot_shutdown();
 check_idle_and_timeout();
