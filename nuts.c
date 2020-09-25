@@ -49,7 +49,7 @@ int argc;
 char *argv[];
 {
 fd_set readmask; 
-int i,len; 
+int i,len,counter=0;
 char inpstr[ARR_SIZE];
 char *remove_first();
 UR_OBJECT user,next;
@@ -2020,12 +2020,6 @@ switch(user->misc_op) {
 	case 9: /* aspect */
 	editor(user,inpstr,ASPECT_LINES); return 1;
 
-	case 10: /* executing macro */
-	if (run_macro(user,user->page_file)!=1) {
-		user->misc_op=0;  user->filepos=0;  user->page_file[0]='\0';
-		user->macro=NULL;
-		prompt(user); 
-		}
 	return 1;
 	}
 return 0;
@@ -4394,7 +4388,7 @@ char *inpstr;
 {
 char type[10],*name;
 char emotion[80];
-int emnum;
+int emnum,check;
 
 if (user->muzzled) {
 	write_user(user,"You are muzzled, you cannot speak.\n");  return;
@@ -4437,12 +4431,11 @@ if (ban_swearing && contains_swearing(inpstr)) {
 	write_user(user,noswearing);  return;
 	}
 
-/*
-write_user(user,word[1]);
-write_user(user,"ciao\n");
-*/
+if (user->command_mode) check=1;
+	else check=0;
 
-if (emnum=get_emotion(word[1])) {
+
+if (emnum=get_emotion(word[check]) && word[check+1][0]) {
 	strcpy(emotion,emotions_array[emnum]);
 	inpstr=remove_first(inpstr);
 	sprintf(text,"%s, you %s: %s\n",emotion,type,inpstr);
@@ -9249,11 +9242,6 @@ if (!(ret=run_macro(user,word[1]))) {
 	return;
 	}
 
-write_user(user,"ciao bel puzzone\n");
-
-
-if (ret==1) user->misc_op=10;
-
 }
  
 
@@ -9267,19 +9255,10 @@ FILE *fp;
 
 if (!(fp=fopen(filename,"r"))) return 0;
 
-/* jump to reading posn in file */
-fseek(fp,user->filepos,0);
-	
-strcpy(user->page_file,filename);
-
 text[0]='\0';
 buff[0]='\0';
 
 fgets(text,sizeof(text)-1,fp);
-user->filepos=strlen(text);
-
-pun=text;
-punb=buff;
 
 if (user->vis) name=user->name; else name=invisname;
 
@@ -9287,62 +9266,50 @@ macroname=user->macro->name;
 
 /**** ora hai la linea... interpretala ********/
 /* copia la stringa in buff, sostituendo a %1 e %2 i nomi */
-
-while (*pun!='\0') {
-	if (&(buff[OUT_BUFF_SIZE])-punb<USER_NAME_LEN) break;
-	if (*pun=='%') {
-		if (*(pun+1)=='1') {
-			*punb='\0';
-			strcat(buff,name);
-			pun+=2;
-			punb+=strlen(name);
-			continue;
+while (!(feof(fp))) {
+	pun=text;
+	punb=buff;
+	while (*pun!='\0') {
+		if (&(buff[OUT_BUFF_SIZE])-punb<USER_NAME_LEN) break;
+		if (*pun=='%') {
+			if (*(pun+1)=='1') {
+				*punb='\0';
+				strcat(buff,name);
+				pun+=2;
+				punb+=strlen(name);
+				continue;
+				}
+			if (*(pun+1)=='2') {
+				*punb='\0';
+				strcat(buff,macroname);
+				pun+=2;
+				punb+=strlen(macroname);
+				continue;
+				}
+			*punb='%';
 			}
-		if (*(pun+1)=='2') {
-			*punb='\0';
-			strcat(buff,macroname);
-			pun+=2;
-			punb+=strlen(macroname);
-			continue;
-			}
-		*punb='%';
+		else *punb=*pun;
+		punb++;
+		pun++;
 		}
-	else *punb=*pun;
-	punb++;
-	pun++;
+
+	*punb='\0';
+
+	pun=&buff[1];
+
+	switch (buff[0]) {
+		case '1' : write_user(user,pun); break;
+		case '2' : write_room_except(user->room,pun,user); break;
+		case '3' : write_user(user->macro,pun); break;
+		case '4' : write_room_except2(user->room,pun,user,user->macro); break;
+		default  : write_user(user,pun); 
+		}
+	fgets(text,sizeof(text)-1,fp);
 	}
-
-*punb='\0';
-
-pun=&buff[1];
-
-switch (buff[0]) {
-	case '1' : write_user(user,pun); break;
-	case '2' : write_room_except(user->room,pun,user); break;
-	case '3' : write_user(macro,pun); break;
-	case '4' : write_room_except2(user->room,pun,user,macro); break;
-	default  : write_user(user,pun); 
-	}
-
-
-
-fgets(text,sizeof(text)-1,fp);
-
-sprintf(buff,"successiva: %s",text);
-write_user(user,buff);
-
-if (!(strncmp(text,"#end",4))) {
-	retval=2;
-	user->filepos=0;
-	user->page_file[0]='\0';
-	user->macro=NULL;
-	}
-else retval=1;
 
 fclose(fp);
 
-return retval;
-
+return 1;
 }
 
 
@@ -9353,6 +9320,9 @@ return retval;
 
 void do_events()
 {
+/*
+if (user_first!=NULL) write_user(user_first,"ecco\n");
+*/
 set_date_time();
 check_reboot_shutdown();
 check_idle_and_timeout();
