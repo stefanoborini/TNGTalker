@@ -85,21 +85,6 @@ write_syslog(text,0,TOSYS);
 /**** Main program loop. *****/
 setjmp(jmpvar); /* jump to here if we crash and crash_action = IGNORE */
 while(1) {
-	counter++;
-	sprintf(text,"%d\n",counter);
-	write_user(user_last,text);
-	user=user_first;
-	while(user!=NULL) {
-		next=user->next; /* store in case user object is destructed */
-		if (user->misc_op==10) {
-				if (counter>100) {
-					run_macro(user,user->page_file);
-					counter=0;
-					}
-				}
-		user=user->next;
-		}
-
 
 	/* set up mask then wait */
 	setup_readmask(&readmask);
@@ -9325,10 +9310,12 @@ while (text[0]!='#') {
 	*punb='\0';
 	pun=&buff[1];
 	switch (buff[0]) {
-		case '1' : write_user(user,pun); break;
-		case '2' : write_room_except(user->room,pun,user); break;
-		case '3' : write_user(user->macro,pun); break;
-		case '4' : write_room_except2(user->room,pun,user,user->macro); break;
+/* me */	case 'm' : write_user(user,pun); break;
+/* room */	case 'r' : write_room_except(user->room,pun,user); break;
+/* victim */	case 'v' : write_user(user->macro,pun); break;
+/* other */	case 'o' : write_room_except2(user->room,pun,user,user->macro); break;
+/* all   */     case 'a' : write_room(user->room,pun); break;
+/* shout */     case 's' : write_room(NULL,pun); break;
 		default  : write_user(user,pun); 
 	}
 	fgets(text,sizeof(text)-1,fp);
@@ -9364,7 +9351,18 @@ check_reboot_shutdown();
 check_idle_and_timeout();
 check_nethangs_send_keepalives(); 
 check_messages(NULL,0);
+check_macros();
 reset_alarm();
+}
+
+
+check_macros() {
+UR_OBJECT user;
+        user=user_first;
+        while(user!=NULL) {
+                if (user->misc_op==10) run_macro(user,user->page_file);
+                user=user->next;
+		}
 }
 
 
