@@ -2635,7 +2635,7 @@ while (emochar_array[i][0]!='*') {
 	if (!(strcmp(str,emochar_array[i]))) return i;
 	i++;
 	}
-return 0;
+return -1;
 }
 	
 
@@ -4250,6 +4250,7 @@ switch(com_num) {
 	case UNDO     : undo(user); break;
 	case ASPECT   : aspect(user,0); break;
 	case JOIN     : join(user); break;
+	case MACRO    : macro(user); break;
 	default: write_user(user,"Command not executed in exec_com().\n");
 	}	
 }
@@ -4480,8 +4481,7 @@ if (ban_swearing && contains_swearing(inpstr)) {
 if (user->command_mode) check=1;
 	else check=0;
 
-
-if (emnum=get_emotion(word[check]) && word[check+1][0]) {
+if ((emnum=get_emotion(word[check]))!=-1 && word[check+1][0]) {
 	strcpy(emotion,emotions_array[emnum]);
 	inpstr=remove_first(inpstr);
 	sprintf(text,"%s, you %s: %s\n",emotion,type,inpstr);
@@ -4576,6 +4576,7 @@ if (inpstr[strlen(inpstr)-1]=='?') strcpy(type,"ask");
 else strcpy(type,"tell");
 sprintf(text,"~OLYou %s %s:~RS %s\n",type,u->name,inpstr);
 write_user(user,text);
+record_tell(user,text);
 if (user->vis) name=user->name; else name=invisname;
 sprintf(text,"~OL%s %ss you:~RS %s\n",name,type,inpstr);
 write_user(u,text);
@@ -9377,6 +9378,7 @@ UR_OBJECT user;
 user->misc_op=0;
 user->filepos=0;
 user->macro[0]='\0';
+prompt(user);
 }
 
 
@@ -9386,8 +9388,8 @@ char *str;
 int global;
 {
 FILE *fp;
-char filename[80],buff1[80],buff2[80];
-int pos=0;
+char filename[80],name[80];
+int level,syntax,pos=0;
 
 if (global) sprintf(filename,"%s/gmacro",DATAFILES);
 else sprintf(filename,"%s/%s.macro",USERFILES,user->name);
@@ -9399,9 +9401,12 @@ text[0]='\0';
 fgets(text,sizeof(text)-1,fp);
 
 while (!feof(fp)) {
-	sscanf(text,"%s %s",buff1,buff2);
-	if (!(strcmp(buff1,"@name")) && !(strcmp(buff2,str))) return pos;
+	if(text[0]=='@') {
+		sscanf(text,"%s %d %d",name,&level,&syntax);/*nome,livello,sintassi*/
+		if (!(strcmp((name+1),str)) && user->level>=level) return
+pos;
                                                          /* trovata!! */
+		}
 	pos+=strlen(text);
 	fgets(text,sizeof(text)-1,fp);
 	}
@@ -9410,6 +9415,10 @@ while (!feof(fp)) {
 return -1;
 }
 
+macro(user)
+UR_OBJECT user;
+{
+}
 
 
 /**************************** EVENT FUNCTIONS ******************************/
