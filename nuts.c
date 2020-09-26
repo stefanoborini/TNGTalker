@@ -4024,7 +4024,7 @@ exec_com(user,inpstr)
 UR_OBJECT user;
 char *inpstr;
 {
-int i,len,ret;
+int i,len,ret,syntax;
 char filename[80],*comword=NULL;
 UR_OBJECT u;
 
@@ -4053,23 +4053,41 @@ while(command[i][0]!='*') {
 	}
 /* NEWADD */
 if (com_num==-1 && user->room!=NULL) {
-	if ((ret=search_for_macro(user,comword,0))!=-1) {
+	if ((ret=search_for_macro(user,comword,0,&syntax))!=-1) {
 		user->filepos=ret;
-		if (!(u=get_user(word[1]))) {
-			write_user(user,notloggedon);	
-			return;
+		if (!syntax) {
+			if (!word[1][0]) {
+				write_user(user,"This macro needs a target\n");
+				user->filepos=0;
+				return;
+				}		
+			if (!(u=get_user(word[1]))) {
+				write_user(user,notloggedon);	
+				user->filepos=0;
+				return;
+				}
+			strcpy(user->macro,u->name);
 			}
-		strcpy(user->macro,u->name);
+		else strcpy(user->macro,user->name);
 		run_macro(user,0);
 		return;
 		}
-	if ((ret=search_for_macro(user,comword,1))!=-1) {
+	if ((ret=search_for_macro(user,comword,1,&syntax))!=-1) {
 		user->filepos=ret;
-		if (!(u=get_user(word[1]))) {
-			write_user(user,notloggedon);	
-			return;
+		if (!syntax) {
+			if (!word[1][0]) {
+				write_user(user,"This macro needs a target\n");
+				user->filepos=0;
+				return;
+				}		
+			if (!(u=get_user(word[1]))) {
+				write_user(user,notloggedon);	
+				user->filepos=0;
+				return;
+				}
+			strcpy(user->macro,u->name);
 			}
-		strcpy(user->macro,u->name);
+		else strcpy(user->macro,user->name);
 		run_macro(user,1);
 		return;
 		}
@@ -9386,14 +9404,15 @@ user->macro[0]='\0';
 }
 
 
-search_for_macro(user,str,global)
+search_for_macro(user,str,global,syntax)
 UR_OBJECT user;
 char *str;
 int global;
+int *syntax;
 {
 FILE *fp;
 char filename[80],name[80];
-int level,syntax,pos=0;
+int level,pos=0;
 
 if (global) sprintf(filename,"%s/%s",MACRODIR,GLOBALMACRO);
 else sprintf(filename,"%s/%s.macro",MACRODIR,user->name);
@@ -9406,7 +9425,7 @@ fgets(text,sizeof(text)-1,fp);
 
 while (!feof(fp)) {
 	if(text[0]=='@') {
-		sscanf(text,"%s %d %d",name,&level,&syntax);/*nome,livello,sintassi*/
+		sscanf(text,"%s %d %d",name,&level,syntax);/*nome,livello,sintassi*/
 		if (!(strcmp((name+1),str)) && user->level>=level) return pos;
                                                          /* trovata!! */
 		}
