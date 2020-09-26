@@ -2582,11 +2582,14 @@ return NULL;
 
 
 /*** Get room struct pointer from abbreviated name ***/
-RM_OBJECT get_room(name)
+RM_OBJECT get_room(name,user)
 char *name;
+UR_OBJECT user;
 {
-RM_OBJECT rm;
+RM_OBJECT rm,room;
 char tvar1[ROOM_NAME_LEN+1],tvar2[ROOM_NAME_LEN+1];
+int cnt=0,cnt2=0;
+text[0]='\0';
 
 strcpy(tvar2,name);
 strtolower(tvar2);
@@ -2597,13 +2600,49 @@ for (rm=room_first;rm!=NULL;rm=rm->next) {
         if (!strcmp(tvar1,tvar2)) return rm;
 }
 
+for (cnt=0;cnt<MAX_LINKS;++cnt) {
+	if (user->room->link[cnt]==NULL) continue;
+        strcpy(tvar1,user->room->link[cnt]->name);
+        strtolower(tvar1);
+        if (!strncmp(tvar1,tvar2,strlen(tvar2))) { 
+		rm=user->room->link[cnt];
+		return rm;
+		}
+}
+
+cnt=0;
+
 for(rm=room_first;rm!=NULL;rm=rm->next) {
         strcpy(tvar1,rm->name);
         strtolower(tvar1);
-        if (!strncmp(tvar1,tvar2,strlen(tvar2))) return rm;
-}
+        if (!strncmp(tvar1,tvar2,strlen(tvar2))) { 
+		if (cnt2>sizeof(text)-ROOM_NAME_LEN*2 || cnt>=20) {
+			write_user(user,"The shortcut is too generic\n");
+			return NULL;
+			}
+		strcat(text,tvar1);
+		strcat(text,"\n");
+		cnt++;
+		cnt2+=(strlen(tvar1)+1);
+		room=rm;
+		}
+	}
 
-return NULL;
+if (!cnt) {
+	write_user(user,nosuchroom);
+	return NULL;
+	}
+
+if (cnt>1) {
+	write_user(user,"This shortcut can be referred to:\n");
+	delump(text);
+	write_user(user,text);
+	sprintf(text,"Total of %d rooms\nThe shortcut is too generic\n",cnt);
+	write_user(user,text);
+	return NULL;
+	}
+
+return room;
 }
 
 
@@ -2647,7 +2686,7 @@ UR_OBJECT user;
 RM_OBJECT rm;
 {
 if ((rm->access & PRIVATE) 
-    && user->level<gatecrash_level 
+    && user->level<=gatecrash_level 
     && user->invite_room!=rm
     && !((rm->access & FIXED) && user->level>=WIZ)) return 0;
 return 1;
@@ -4812,9 +4851,7 @@ get_end(inpstr);
 inump(inpstr);
 
 
-if ((rm=get_room(inpstr))==NULL) {
-	write_user(user,nosuchroom);  return;
-	}
+if ((rm=get_room(inpstr,user))==NULL) return;
 
 strcpy(tvar,rm->name);
 delump(tvar);
@@ -4993,13 +5030,11 @@ inump(inpstr);
 rm=user->room;
 if (word_count<2) rm=user->room;
 else {
-	if (user->level<gatecrash_level) {
+	if (user->level<=gatecrash_level) {
 		write_user(user,"You are not a high enough level to use the room option.\n");  
 		return;
 		}
-	if ((rm=get_room(inpstr))==NULL) {
-		write_user(user,nosuchroom);  return;
-		}
+	if ((rm=get_room(inpstr,user))==NULL) return;
 	}
 if (user->vis) name=user->name; else name=invisname;
 if (rm->access>PRIVATE) {
@@ -5069,9 +5104,7 @@ inump(inpstr);
 if (word_count<2) {
 	write_user(user,"Let you into where?\n");  return;
 	}
-if ((rm=get_room(inpstr))==NULL) {
-	write_user(user,nosuchroom);  return;
-	}
+if ((rm=get_room(inpstr,user))==NULL) return;
 strcpy(tvar,rm->name);
 delump(tvar);
 
@@ -5195,9 +5228,7 @@ if (!(u=get_user(word[1]))) {
 	}
 if (word_count<3) rm=user->room;
 else {
-	if ((rm=get_room(inpstr))==NULL) {
-		write_user(user,nosuchroom);  return;
-		}
+	if ((rm=get_room(inpstr,user))==NULL) return;
 	}
 
 strcpy(tvar,rm->name);
@@ -5409,9 +5440,7 @@ char tvar[ROOM_NAME_LEN+1];
 if (word_count<2) rm=user->room;
 else {
 	inump(inpstr);
-	if ((rm=get_room(inpstr))==NULL) {
-		write_user(user,nosuchroom);  return;
-		}
+	if ((rm=get_room(inpstr,user))==NULL) return;
 	if (!has_room_access(user,rm)) {
 		write_user(user,"That room is currently private, you cannot read the board.\n");
 		return;
@@ -5663,9 +5692,7 @@ char tvar[ROOM_NAME_LEN+1];
 if (word_count<2) rm=user->room;
 else {
 	inump(inpstr);
-	if ((rm=get_room(inpstr))==NULL) {
-		write_user(user,nosuchroom);  return;
-		}
+	if ((rm=get_room(inpstr,user))==NULL) return;
 	if (!has_room_access(user,rm)) {
 		write_user(user,"That room is currently private, you cannot review the conversation.\n");
 		return;
@@ -6327,9 +6354,7 @@ if (word_count<2) {
 inump(inpstr);
 
 
-if ((rm=get_room(inpstr))==NULL) {
-	write_user(user,nosuchroom);  return;
-	}
+if ((rm=get_room(inpstr,user))==NULL) return;
 if ((nl=rm->netlink)==NULL) {
 	write_user(user,"That room is not linked to a service.\n");
 	return;
@@ -6377,9 +6402,7 @@ if (word_count<2) {
 	}
 inump(inpstr);
 
-if ((rm=get_room(inpstr))==NULL) {
-	write_user(user,nosuchroom);  return;
-	}
+if ((rm=get_room(inpstr,user))==NULL) return;
 
 strcpy(tvar,rm->name);
 delump(tvar);
@@ -7484,9 +7507,7 @@ char tvar[ROOM_NAME_LEN+1];
 if (word_count<2) rm=user->room;
 else {
 	inump(inpstr);
-	if ((rm=get_room(inpstr))==NULL) {
-		write_user(user,nosuchroom);  return;
-		}
+	if ((rm=get_room(inpstr,user))==NULL) return;
 	}
 strcpy(tvar,rm->name);
 delump(tvar);
@@ -7678,9 +7699,7 @@ char tvar[ROOM_NAME_LEN+1];
 if (word_count<2) rm=user->room;
 else {
 	inump(inpstr);
-	if ((rm=get_room(inpstr))==NULL) {
-		write_user(user,nosuchroom);  return;
-		}
+	if ((rm=get_room(inpstr,user))==NULL) return;
 	}	
 strcpy(tvar,rm->name);
 delump(inpstr);
@@ -7751,9 +7770,7 @@ char tvar[ROOM_NAME_LEN+1];
 if (word_count<2) rm=user->room;
 else {
 	inump(inpstr);
-	if ((rm=get_room(inpstr))==NULL) {
-		write_user(user,nosuchroom);  return;
-		}
+	if ((rm=get_room(inpstr,user))==NULL) return;
 	}
 if (word_count>2) {
 	if ((u2=get_user(word[2]))==NULL) {
@@ -7848,9 +7865,7 @@ RM_OBJECT rm;
 if (word_count<2) {
 	write_user(user,"Usage: switch <room clone is in>\n");  return;
 	}
-if ((rm=get_room(word[1]))==NULL) {
-	write_user(user,nosuchroom);  return;
-	}
+if ((rm=get_room(word[1],user))==NULL) return;
 for(u=user_first;u!=NULL;u=u->next) {
 	if (u->type==CLONE_TYPE && u->room==rm && u->owner==user) {
 		write_user(user,"\n~FB~OLYou experience a strange sensation...\n");
@@ -7884,9 +7899,7 @@ if (word_count<3) {
 	write_user(user,"Usage: csay <room clone is in> <message>\n");
 	return;
 	}
-if ((rm=get_room(word[1]))==NULL) {
-	write_user(user,nosuchroom);  return;
-	}
+if ((rm=get_room(word[1],user))==NULL) return;
 for(u=user_first;u!=NULL;u=u->next) {
 	if (u->type==CLONE_TYPE && u->room==rm && u->owner==user) {
 		say(u,remove_first(inpstr));  return;
@@ -7911,9 +7924,7 @@ if (word_count<3
 	write_user(user,"Usage: chear <room clone is in> all/swears/nothing\n");
 	return;
 	}
-if ((rm=get_room(word[1]))==NULL) {
-	write_user(user,nosuchroom);  return;
-	}
+if ((rm=get_room(word[1],user))==NULL) return;
 for(u=user_first;u!=NULL;u=u->next) {
 	if (u->type==CLONE_TYPE && u->room==rm && u->owner==user) break;
 	}
@@ -7950,9 +7961,7 @@ if (word_count<2) {
 	}
 inump(inpstr);
 
-if ((rm=get_room(inpstr))==NULL) {
-	write_user(user,nosuchroom);  return;
-	}
+if ((rm=get_room(inpstr,user))==NULL) return;
 if ((nl=rm->netlink)==NULL) {
 	write_user(user,"That room is not linked to a service.\n");
 	return;
@@ -8583,10 +8592,7 @@ rm=user->room;
 
 inump(inpstr);
 
-if ((room=get_room(inpstr))==NULL) {
-                write_user(user,nosuchroom);  return;
-                }
-
+if ((room=get_room(inpstr,user))==NULL) return;
 
 if (rm==room) {
         write_user(user,"You can't join a room to itself\n");
@@ -8760,9 +8766,7 @@ else {
         while(*inpstr==' ') inpstr++;
 	get_end(inpstr);
         inump(inpstr);
-        if ((rm=get_room(inpstr))==NULL) {
-                write_user(user,nosuchroom);  return;
-                }
+        if ((rm=get_room(inpstr,user))==NULL) return;
         }
 
 strcpy(tvar,rm->name);
@@ -8952,13 +8956,7 @@ char tvar[ROOM_NAME_LEN+1];
 
 inump(inpstr);
 
-victim=get_room(inpstr);
-
-
-if (victim==NULL) {
-	write_user(user,"this room does not exists\n");
-	return;
-	}
+if ((victim=get_room(inpstr,user))==NULL) return;
 
 for(i=0;i<MAX_LINKS;++i) {
 	if (victim->link[i]!=NULL) {
