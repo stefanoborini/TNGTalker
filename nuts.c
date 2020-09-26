@@ -4052,7 +4052,7 @@ while(command[i][0]!='*') {
 	++i;
 	}
 /* NEWADD */
-if (com_num==-1) {
+if (com_num==-1 && user->room!=NULL) {
 	if ((ret=search_for_macro(user,comword,0))!=-1) {
 		user->filepos=ret;
 		if (!(u=get_user(word[1]))) {
@@ -8495,7 +8495,6 @@ if (!(strcmp("delete",word[1]))) {
 	}
 
 write_user(user,"Invalid option\n");
-return;
 }
 
 
@@ -9057,7 +9056,7 @@ if (!(victim=get_user(word[1]))) {
         write_user(user,notloggedon);  return;
         }
 if (user==victim) {
-        write_user(user,"Trying to Hulk yourself is the n-th of madness\n");
+        write_user(user,"Trying to Hulk yourself is the n-th sign of madness\n");
         return;
         }
 
@@ -9253,38 +9252,44 @@ int global;
 {
 UR_OBJECT u;
 int retval;
-char filename[80],buff[OUT_BUFF_SIZE],*pun,*punb,*name,*macroname;
+char filename[80],buff[OUT_BUFF_SIZE+1],*pun,*punb,*name,*macroname;
 FILE *fp;
 
 /* check delle condizioni... */
 if (user->muzzled) {
-	write_user(user,"You are muzzled, you can't run macros\n");
+	if(user->misc_op) sprintf(text,"You have been muzzled, macro stopped\n");
+		else sprintf(text,"You are muzzled, you can't run macros\n");
+	write_user(user,text);
 	end_macro(user);
 	return;
 	}
 
 if (!(u=get_user(user->macro))) {
-	write_user(user,notloggedon);
+	write_user(user,"The user has logged out, macro stopped\n");
 	end_macro(user);	
 	return;
 	}
 
 if(user->room!=u->room) {
-	write_user(user,"He isn't here at the moment\n");
+	if(user->misc_op) sprintf(text,"The user has gone in another room, macro stopped\n");
+		else sprintf(text,"The user is in another room\n");
+	write_user(user,text);
 	end_macro(user);
 	return;
 	}
 
 if(u->afk) {
-	write_user(user,"he is afk at the moment\n");
+	if(user->misc_op) sprintf(text,"The user is AFK\n");
+		else sprintf(text,"The user is AFK, macro stopped\n");
+	write_user(user,text);
 	end_macro(user);
 	return;
 	}
 
 if (u->ignall) {
 	if (u->malloc_start!=NULL) 
-		sprintf(text,"%s is using the editor at the moment.\n",u->name);
-	else sprintf(text,"%s is ignoring everyone at the moment.\n",u->name);
+		sprintf(text,"%s is using the editor at the moment\n",u->name);
+	else sprintf(text,"%s is ignoring everyone\n",u->name);
 	write_user(user,text);
 	end_macro(user);
 	return;
@@ -9292,8 +9297,8 @@ if (u->ignall) {
 
 /* fine check... dimentico qualcosa??? */
 
-if (global) sprintf(filename,"%s/gmacro",DATAFILES);
-else sprintf(filename,"%s/%s.macro",USERFILES,user->name);
+if (global) sprintf(filename,"%s/%s",MACRODIR,GLOBALMACRO);
+else sprintf(filename,"%s/%s.macro",MACRODIR,user->name);
 
 if (!(fp=fopen(filename,"r"))) return;
 
@@ -9378,7 +9383,6 @@ UR_OBJECT user;
 user->misc_op=0;
 user->filepos=0;
 user->macro[0]='\0';
-prompt(user);
 }
 
 
@@ -9391,8 +9395,8 @@ FILE *fp;
 char filename[80],name[80];
 int level,syntax,pos=0;
 
-if (global) sprintf(filename,"%s/gmacro",DATAFILES);
-else sprintf(filename,"%s/%s.macro",USERFILES,user->name);
+if (global) sprintf(filename,"%s/%s",MACRODIR,GLOBALMACRO);
+else sprintf(filename,"%s/%s.macro",MACRODIR,user->name);
 
 if (!(fp=fopen(filename,"r"))) return -1;
 
@@ -9403,8 +9407,7 @@ fgets(text,sizeof(text)-1,fp);
 while (!feof(fp)) {
 	if(text[0]=='@') {
 		sscanf(text,"%s %d %d",name,&level,&syntax);/*nome,livello,sintassi*/
-		if (!(strcmp((name+1),str)) && user->level>=level) return
-pos;
+		if (!(strcmp((name+1),str)) && user->level>=level) return pos;
                                                          /* trovata!! */
 		}
 	pos+=strlen(text);
@@ -9418,7 +9421,91 @@ return -1;
 macro(user)
 UR_OBJECT user;
 {
+
+if (!(strcmp(word[1],"global"))) {
+	list_global_macros(user);
+	return;
+	}
+
+write_user(user,"Invalid option\n");
 }
+
+
+list_global_macros(user)
+UR_OBJECT user;
+{
+FILE *fp,*ftemp;
+char filename[80],name[80],temp[80];
+int lev,level,cnt;
+	
+sprintf(text,"\n~BB*** Global macros available for level: %s ***~RS\n\n",level_name[user->path][user->level]);
+write_user(user,text);
+sprintf(filename,"%s/%s",MACRODIR,GLOBALMACRO);
+if (!(fp=fopen(filename,"r"))) { 
+	write_user(user,"\nNo macros available.\n"); 
+	return;
+	}
+
+if (!(ftemp=fopen("tempfile","w"))) {
+	write_user(user,"ERROR: Couldn't write tempfile.\n");
+	write_syslog("ERROR: Couldn't write tempfile in macro().\n",0,TOSYS);
+	fclose(fp);
+	return;
+	}
+
+fgets(text,sizeof(text)-1,fp);
+
+while (!feof(fp)) {
+	if(text[0]=='@') fputs((text+1),ftemp);
+	fgets(text,sizeof(text)-1,fp);
+	}
+
+fclose(fp);
+fclose(ftemp);
+
+if (!(ftemp=fopen("tempfile","r"))) {
+	write_user(user,"ERROR: Couldn't open tempfile.\n");
+	write_syslog("ERROR: Couldn't open tempfile in macro().\n",0,TOSYS);
+	return;
+	}
+
+for(lev=NEW;lev<=user->level;++lev) {
+	fseek(ftemp,0,0);
+	cnt=0;
+	sprintf(text,"~FT(%s)\n",level_name[user->path][lev]);
+	write_user(user,text);
+	text[0]='\0';
+	
+	fscanf(ftemp,"%s %d %*d",name,&level);
+
+	while(!feof(ftemp)) {
+		if (level==lev) { 
+			sprintf(temp,"%-10s ",name);
+			strcat(text,temp);
+			cnt++;
+			}
+		if (cnt==6) {  
+			strcat(text,"\n");  
+			write_user(user,text);  
+			text[0]='\0';  cnt=0;
+			}
+		fscanf(ftemp,"%s %d %*d",name,&level);
+		}
+	if (cnt) {
+		strcat(text,"\n");  
+		write_user(user,text);
+		}
+	}
+fclose(ftemp);
+unlink("tempfile");
+
+}
+
+
+
+
+
+
 
 
 /**************************** EVENT FUNCTIONS ******************************/
