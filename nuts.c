@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts422.h"
+#include "nuts423.h"
 
 #define VERSION "3.3.3"
 
@@ -512,7 +512,7 @@ while(!feof(fp)) {
 	}
 fclose(fp);
 
-
+config_line=0;
 
 sprintf(filename,"%s/%s",DATAFILES,ROOMCONFIG);
 if (!(fp=fopen(filename,"r"))) {
@@ -521,6 +521,7 @@ if (!(fp=fopen(filename,"r"))) {
 fgets(line,loadspc,fp);
 
 while (!feof(fp)) {
+	config_line++;
         for(i=0;i<8;++i) wrd[i][0]='\0';
         sscanf(line,"%s %s %s %s %s %s %s %s",wrd[0],wrd[1],wrd[2],wrd[3],wrd[4],wrd[5],wrd[6],wrd[7]);
         if (wrd[0][0]=='\0') {
@@ -579,7 +580,7 @@ for(rm1=room_first;rm1!=NULL;rm1=rm1->next) {
 				rm1->link[i]=rm2;  break;
 				}
 			}
-		if (rm1->link[i]==NULL) {
+		if (rm1->link[i]==NULL && strcmp(rm1->link_label[i],"null")) {
 			fprintf(stderr,"NUTS: Room %s has undefined link label '%s'.\n",rm1->name,rm1->link_label[i]);
 			boot_exit(1);
 			}
@@ -962,13 +963,13 @@ if (!wrd[2][0]) {
         fprintf(stderr,"NUTS: Missing map type in line %d",config_line);
         boot_exit(1);
         }
+
 if (strlen(wrd[2])>MAPTYPE_LEN) {
         fprintf(stderr,"NUTS: Maptype label too long il line %d",config_line);
         boot_exit(1);
         }
 
 strcpy(room->maptype,wrd[2]);
-
 
 
 /* Parse access privs */
@@ -2567,11 +2568,13 @@ char *name;
 UR_OBJECT u;
 
 name[0]=toupper(name[0]);
+
 /* Search for exact name */
 for(u=user_first;u!=NULL;u=u->next) {
 	if (u->login || u->type==CLONE_TYPE) continue;
 	if (!strcmp(u->name,name))  return u;
 	}
+
 /* Search for close match name */
 for(u=user_first;u!=NULL;u=u->next) {
 	if (u->login || u->type==CLONE_TYPE) continue;
@@ -8438,7 +8441,7 @@ char *inpstr;
 
 if (word_count<2) {
 	if(user->level>MAGHETTO) {
-		write_user(user,"usage: .room [open/link/map/desc/status/save/reload/delete] <other info...>\n");
+		write_user(user,"usage: .room [open/link/slink/map/desc/status/reload/delete] <other info...>\n");
 	        sprintf(text,"\n"); 
 		return;
 		}
@@ -8474,6 +8477,17 @@ if (!(strcmp("link",word[1]))) {
 	}
 
 
+if (!(strcmp("slink",word[1]))) {
+	if (user->level<WIZ) { write_user(user,"Invalid option\n"); return; }
+	inpstr=remove_first(inpstr);
+	while(*inpstr==' ') inpstr++;
+	if (*inpstr=='\0') {	write_user(user,"specify room name, please\n"); return; }
+	get_end(inpstr);
+	room_slink(user,inpstr);	
+	return;
+	}
+
+
 if (!(strcmp("desc",word[1]))) {
 	if (user->level<MAGHETTO) { write_user(user,"Invalid option\n"); return; }
 		if (user->type==REMOTE_TYPE) {
@@ -8493,14 +8507,6 @@ if (!(strcmp("map",word[1]))) {
  
 if (!(strcmp("status",word[1]))) {
 	room_status(user,inpstr);
-	return;
-	}
-
-
-	
-if (!(strcmp("save",word[1]))) {
-	if (user->level<WIZ) { write_user(user,"Invalid option\n"); return; }
-	room_save(user);
 	return;
 	}
 
@@ -8555,12 +8561,18 @@ for (room=room_first; room!=NULL; room=room->next) {
 		}
 	}
 
+if (!(strcmp(inpstr,"null"))) {
+	write_user(user,"The name null is not valid\n");
+	return;
+	}
+
 room=create_room();
 
 strcpy(room->name,inpstr);
 strcpy(room->label,inpstr);
 
-room->access=PUBLIC;
+room->access=FIXED_PUBLIC;
+strcpy(room->maptype,"a");
 
 sprintf(text,"%s successfully created room %s \n",user->name,room->name);
 
@@ -8575,11 +8587,102 @@ move_user(user,room,1);
 sprintf(text,"~OL~FWSYSTEM: ~FGroom %s successfully created\n",inpstr);
 
 write_user(user,text);
+room_save(user);
 }
 
 
-
 room_link(user,inpstr)
+UR_OBJECT user;
+char *inpstr;
+{
+RM_OBJECT room,rm;
+int flag=0,last_rm=MAX_LINKS,last_room=MAX_LINKS,i;
+char tvar1[ROOM_NAME_LEN+1],tvar2[ROOM_NAME_LEN+1];
+
+rm=user->room;
+inump(inpstr);
+
+if ((room=get_room(inpstr,user))==NULL) return;
+
+if (rm==room) {
+        write_user(user,"You can't join a room to itself\n");
+        return;
+        }
+
+for(i=MAX_LINKS-1;i>=0;i--) {
+	if (rm->link[i]==room) flag+=1; 
+	if (room->link[i]==rm) flag+=2;
+	if (rm->link[i]==NULL) last_rm=i;
+	if (room->link[i]==NULL) last_room=i;
+	}
+
+
+if (flag==3) {
+	write_user(user,"These rooms are already linked\n");
+	return;
+	}
+
+if (last_rm==MAX_LINKS) {
+	strcpy(tvar1,rm->name);
+	delump(tvar1);
+	sprintf(text,"Sorry, no more links available for %s\n",tvar1);
+	write_user(user,text);
+	return;
+	}
+
+
+if (last_room==MAX_LINKS) {
+	strcpy(tvar1,room->name);
+	delump(tvar1);
+	sprintf(text,"Sorry, no more links available for %s\n",tvar1);
+	write_user(user,text);
+	return;
+	}
+
+switch (flag) {
+	case 0:	rm->link[last_rm]=room;
+		room->link[last_room]=rm;
+		strcpy(tvar1,rm->name);
+		strcpy(tvar2,room->name);
+		delump(tvar1);
+		delump(tvar2);
+		sprintf(text,"~OL~FWSYSTEM: ~FGroom %s linked to room %s and vice-versa\n",tvar1,tvar2);
+		write_user(user,text);
+		sprintf(text,"%s has linked %s to %s and vice-versa\n",user->name,rm->name,room->name);
+		write_syslog(text,1,TOROOM);
+		write_syslog(text,1,TOSYS);
+		break;
+
+	case 1: room->link[last_room]=rm;
+                strcpy(tvar1,rm->name);
+                strcpy(tvar2,room->name);
+                delump(tvar1);
+                delump(tvar2);
+                sprintf(text,"~OL~FWSYSTEM: ~FGroom %s already linked to room %s. Created double way link\n",tvar1,tvar2);
+                write_user(user,text);
+                sprintf(text,"%s has linked %s to %s and vice-versa\n",user->name,rm->name,room->name); 
+		write_syslog(text,1,TOROOM);
+                write_syslog(text,1,TOSYS);
+                break;
+
+	case 2: rm->link[last_rm]=room;
+                strcpy(tvar1,rm->name);
+                strcpy(tvar2,room->name);
+                delump(tvar1);
+                delump(tvar2);
+                sprintf(text,"~OL~FWSYSTEM: ~FGroom %s already linked to room %s. Created double way link\n",tvar2,tvar1);
+                write_user(user,text);
+                sprintf(text,"%s has linked %s to %s and vice-versa\n",user->name,rm->name,room->name); 
+		write_syslog(text,1,TOROOM);
+                write_syslog(text,1,TOSYS);
+                break;
+	}
+
+room_save(user);
+}
+
+
+room_slink(user,inpstr)
 UR_OBJECT user;
 char *inpstr;
 {
@@ -8589,7 +8692,6 @@ int i;
 
 
 rm=user->room;
-
 inump(inpstr);
 
 if ((room=get_room(inpstr,user))==NULL) return;
@@ -8603,7 +8705,7 @@ if (rm==room) {
 
 for(i=0;i<MAX_LINKS;++i) {
         if (rm->link[i]==room) {
-                write_user(user,"This room is already linked...\n");
+                write_user(user,"The room is already linked...\n");
                 return;
                 }
         if (rm->link[i]==NULL) break;
@@ -8611,7 +8713,7 @@ for(i=0;i<MAX_LINKS;++i) {
 
 
 if (i==MAX_LINKS) {
-        write_user(user,"sorry... no more links available\n");
+        write_user(user,"Sorry... no more links available\n");
         return;
         }
 
@@ -8620,12 +8722,12 @@ strcpy(tvar1,room->name);
 strcpy(tvar2,rm->name);
 delump(tvar1);
 delump(tvar2);
-sprintf(text,"~OL~FWSYSTEM : ~FGroom %s linked to room %s\n",tvar2,tvar1);
+sprintf(text,"~OL~FWSYSTEM : ~FGroom %s slinked to room %s\n",tvar2,tvar1);
 write_user(user,text);
-sprintf(text,"%s has linked room %s to room %s\n",user->name,tvar2,tvar1);
+sprintf(text,"%s has slinked room %s to room %s\n",user->name,tvar2,tvar1);
 write_syslog(text,1,TOROOM);
 write_syslog(text,1,TOSYS);
-
+room_save(user);
 }
 
 
@@ -8708,7 +8810,6 @@ rm->desc[i]='\0';
 fclose(fp);
 
 write_user(user,"~OL~FWSYSTEM : ~FGdescription loaded\n");
-
 }
 
 
@@ -8746,6 +8847,7 @@ write_user(user,text);
 sprintf(text,"%s has changed the %s maptype to %s\n",user->name,rm->name,rm->maptype);
 write_syslog(text,1,TOSYS);
 write_syslog(text,1,TOROOM);
+room_save(user);
 }
 
 room_status(user,inpstr)
@@ -8818,129 +8920,51 @@ room_save(user)
 UR_OBJECT user;
 {
 char filename[80];
-char tempfile[20];
-FILE *fp, *temp;
-int loadspc=ROOM_NAME_LEN+MAX_LINKS*(ROOM_NAME_LEN+1)+MAPTYPE_LEN+50;
-char
-line[ROOM_NAME_LEN+MAX_LINKS*(ROOM_NAME_LEN+1)+MAPTYPE_LEN+50];
+FILE *fp;
 RM_OBJECT room;
-int i,flag;
+int i;
 char *pun;
-char wd[8][MAX_LINKS*(ROOM_NAME_LEN+1)];
 
-flag=0;
+strcpy(filename,"temproomconfig");
 
-room=user->room;
-
-if (room->link[0]==NULL) {
-        write_user(user,"You can't save a room without links\n");
+if (!(fp=fopen(filename,"w"))) {
+        write_user(user,"~OL~FWERROR : ~FRcan't open room temp file");
+        write_syslog("can't open room temp file in room_save()",1,TOSYS);
         return;
 	}
 
-if (room->maptype[0]=='\0') {
-        write_user(user,"Set a maptype, first\n");
-        return;
-        }
+for (room=room_first; room!=NULL; room=room->next) {
+	sprintf(text,"%s ",room->name);
+	for(i=0;i<MAX_LINKS;++i) {
+		if (room->link[i]==NULL) break;
+		strcat(text,room->link[i]->name);
+		strcat(text,",");
+		}
+	if (!i) strcat(text,"null,");
+	pun=text;
+	while (*pun!='\0') pun++;
+	*(pun-1)=' ';
+	strcat(text,room->maptype);
+	switch(room->access) {
+		case PUBLIC:
+		case PRIVATE: strcat(text," BOTH "); break;
+		case FIXED_PRIVATE: strcat(text," PRIV "); break;
+		case FIXED_PUBLIC: strcat(text," PUB "); break;
+		default: strcat(text," BOTH ");
+		}
+	if (room->netlink!=NULL && !room->inlink) {
+		strcat(text,"CONNECT ");
+		strcat(text,room->netlink->service);
+		}
+	if (room->inlink==1) strcat(text,"ACCEPT");
+	strcat(text,"\n");
+	fputs(text,fp);
+	}
 
+fclose(fp);
 
-sprintf(tempfile,"tempfile");
-sprintf(filename,"%s/%s",DATAFILES,ROOMCONFIG);
-if (!(fp=fopen(filename,"r"))) {
-        write_user(user,"~OL~FWERROR : ~FRcan't open room config file");
-        write_syslog("can't open room config file",1,TOSYS);
-        return;
-        }
-
-if (!(temp=fopen(tempfile,"w"))) {
-        write_user(user,"~OL~FWERROR : ~FRcan't open temp room config file");
-        write_syslog("can't open temp room config file",1,TOSYS);
-        fclose(fp);
-        return;
-        }
-
-fgets(line,loadspc,fp);
-
-while(!feof(fp)) { /*while*/
-        for (i=0;i<8;++i) wd[i][0]='\0';
-        sscanf(line,"%s %s %s %s %s %s %s %s",wd[0],wd[1],wd[2],wd[3],wd[4],wd[5],wd[6],wd[7]);
-        if (wd[0][0]=='#' || wd[0][0]=='\0') {
-                fgets(line,loadspc,fp); continue;
-                }
-        if (!(strcmp(room->name,wd[0]))) { /*if*/
-                sprintf(line,"%s ",room->name);
-
-                for (i=0;i<MAX_LINKS;++i) {
-                        if (room->link[i]==NULL) break;
-                        strcat(line,room->link[i]->label);
-                        strcat(line,",");
-
-                        }
-                pun=line;
-                while (*pun!='\0') pun++;
-                *(pun-1)=' ';
-
-                strcat(line,room->maptype);
-                switch(room->access) {
-                        case PUBLIC:
-                        case PRIVATE: strcat(line," BOTH "); break;
-                        case FIXED_PRIVATE: strcat(line," PRIV "); break;
-                        case FIXED_PUBLIC: strcat(line," PUB "); break;
-                        default: strcat(line," BOTH ");
-                        }
-	if (!(strcmp("ACCEPT",wd[4]))) strcat(line," ACCEPT ");
-	if (!(strcmp("CONNECT",wd[4]))) {
-		strcat(line," CONNECT "); strcat(line,wd[5]);
-	        }
- 	pun=line;
-        while (*pun!='\0') pun++;
-        *pun='\n';
-	*(pun+1)='\0';
-        fputs(line,temp);
-        flag=1;
-        }
-
-else fputs(line,temp);
-fgets(line,loadspc,fp);
-}
-
-if (!flag) 
-{
-        sprintf(line,"%s ",room->name);
-        for (i=0;i<MAX_LINKS;++i) {
-                if (room->link[i]==NULL) break;
-                strcat(line,room->link[i]->label);
-                strcat(line,",");
-                }
-
-        pun=line;
-        while (*pun!='\0') pun++;
-        *(pun-1)=' ';
-
-        strcat(line,room->maptype);
-
-        switch(room->access) {
-
-                case PUBLIC:
-                case PRIVATE: strcat(line," BOTH "); break;
-                case FIXED_PRIVATE: strcat(line," PRIV "); break;
-                case FIXED_PUBLIC: strcat(line," PUB "); break;
-                default: strcat(line," BOTH ");
-        }
-	
-
-        pun=line;
-        while (*pun!='\0') pun++;
-        *(pun-1)='\n';
-        fputs(line,temp);
-        }
-
-fclose(temp);
-
-
-rename(tempfile,filename);
-unlink(tempfile);
-
-write_user(user,"~FW~OLSYSTEM : ~FGroom successfully saved\n");
+sprintf(text,"%s/%s",DATAFILES,ROOMCONFIG);
+rename(filename,text);
 
 }
 
@@ -8984,7 +9008,7 @@ destruct_room(victim);
 
 sprintf(text,"~OLSYSTEM : ~FGroom %s deleted\n",tvar);
 write_user(user,text);
-
+room_save(user);
 }
 
 
