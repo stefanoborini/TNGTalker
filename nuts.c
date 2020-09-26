@@ -9422,10 +9422,22 @@ macro(user)
 UR_OBJECT user;
 {
 
-if (!(strcmp(word[1],"global"))) {
+if (word_count<2) {
+	write_user(user,"usage: macro [global/personal]\n");
+	return;
+	}
+
+
+if (!(strncmp(word[1],"global",strlen(word[1])))) {
 	list_global_macros(user);
 	return;
 	}
+
+if (!(strncmp(word[1],"personal",strlen(word[1])))) {
+	list_personal_macros(user);
+	return;
+	}
+
 
 write_user(user,"Invalid option\n");
 }
@@ -9442,13 +9454,13 @@ sprintf(text,"\n~BB*** Global macros available for level: %s ***~RS\n\n",level_n
 write_user(user,text);
 sprintf(filename,"%s/%s",MACRODIR,GLOBALMACRO);
 if (!(fp=fopen(filename,"r"))) { 
-	write_user(user,"\nNo macros available.\n"); 
+	write_user(user,"\nNo macros available.\n\n"); 
 	return;
 	}
 
 if (!(ftemp=fopen("tempfile","w"))) {
 	write_user(user,"ERROR: Couldn't write tempfile.\n");
-	write_syslog("ERROR: Couldn't write tempfile in macro().\n",0,TOSYS);
+	write_syslog("ERROR: Couldn't write tempfile in gmacro().\n",0,TOSYS);
 	fclose(fp);
 	return;
 	}
@@ -9465,7 +9477,7 @@ fclose(ftemp);
 
 if (!(ftemp=fopen("tempfile","r"))) {
 	write_user(user,"ERROR: Couldn't open tempfile.\n");
-	write_syslog("ERROR: Couldn't open tempfile in macro().\n",0,TOSYS);
+	write_syslog("ERROR: Couldn't open tempfile in gmacro().\n",0,TOSYS);
 	return;
 	}
 
@@ -9496,6 +9508,72 @@ for(lev=NEW;lev<=user->level;++lev) {
 		write_user(user,text);
 		}
 	}
+fclose(ftemp);
+unlink("tempfile");
+
+}
+
+
+list_personal_macros(user)
+UR_OBJECT user;
+{
+FILE *fp,*ftemp;
+char filename[80],name[80],temp[80];
+int cnt;
+	
+write_user(user,"\n~BB*** Your personal macros ***~RS\n\n");
+
+sprintf(filename,"%s/%s.macro",MACRODIR,user->name);
+if (!(fp=fopen(filename,"r"))) { 
+	write_user(user,"\nNo macros.\n\n"); 
+	return;
+	}
+
+if (!(ftemp=fopen("tempfile","w"))) {
+	write_user(user,"ERROR: Couldn't write tempfile.\n");
+	write_syslog("ERROR: Couldn't write tempfile in pmacro().\n",0,TOSYS);
+	fclose(fp);
+	return;
+	}
+
+fgets(text,sizeof(text)-1,fp);
+
+while (!feof(fp)) {
+	if(text[0]=='@') fputs((text+1),ftemp);
+	fgets(text,sizeof(text)-1,fp);
+	}
+
+fclose(fp);
+fclose(ftemp);
+
+if (!(ftemp=fopen("tempfile","r"))) {
+	write_user(user,"ERROR: Couldn't open tempfile.\n");
+	write_syslog("ERROR: Couldn't open tempfile in pmacro().\n",0,TOSYS);
+	return;
+	}
+
+cnt=0;
+text[0]='\0';
+	
+fscanf(ftemp,"%s %*d %*d",name);
+
+while(!feof(ftemp)) {
+	sprintf(temp,"%-10s ",name);
+	strcat(text,temp);
+	cnt++;
+	if (cnt==6) {  
+		strcat(text,"\n");  
+		write_user(user,text);  
+		text[0]='\0';  cnt=0;
+		}
+	fscanf(ftemp,"%s %*d %*d",name);
+	}
+
+if (cnt) {
+	strcat(text,"\n");  
+	write_user(user,text);
+	}
+
 fclose(ftemp);
 unlink("tempfile");
 
