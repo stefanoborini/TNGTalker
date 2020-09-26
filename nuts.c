@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts421.h"
+#include "nuts422.h"
 
 #define VERSION "3.3.3"
 
@@ -2029,6 +2029,7 @@ switch(user->misc_op) {
 	editor(user,inpstr,ASPECT_LINES); return 1;
 
 	case 10: /* macro */
+	case 11:
 	return 1;
 
 
@@ -4023,8 +4024,9 @@ exec_com(user,inpstr)
 UR_OBJECT user;
 char *inpstr;
 {
-int i,len;
+int i,len,ret;
 char filename[80],*comword=NULL;
+UR_OBJECT u;
 
 com_num=-1;
 if (word[0][0]=='.') comword=(word[0]+1);
@@ -4049,6 +4051,40 @@ while(command[i][0]!='*') {
 	if (!strncmp(command[i],comword,len)) {  com_num=i;  break;  }
 	++i;
 	}
+/* NEWADD */
+if (com_num==-1) {
+	if ((ret=search_for_macro(user,comword,0))!=-1) {
+		user->filepos=ret;
+		if (!(u=get_user(word[1]))) {
+			write_user(user,notloggedon);	
+			return;
+			}
+		strcpy(user->macro,u->name);
+		run_macro(user,0);
+		return;
+		}
+	if ((ret=search_for_macro(user,comword,1))!=-1) {
+		user->filepos=ret;
+		if (!(u=get_user(word[1]))) {
+			write_user(user,notloggedon);	
+			return;
+			}
+		strcpy(user->macro,u->name);
+		run_macro(user,1);
+		return;
+		}
+	}
+/*
+	la funzione macro va a cercare nei file User.macro e
+	datafiles/gmacro il seek di filepos della macro in questione.
+	quando lo individuano, ritornano un risultato non nullo e le macro
+	sono eseguite come comandi. Se invece ritornano 0, il programma
+	prosegue, e fornisce unknown command.
+	E' importante notare che prima cerca tra i comandi, quindi tra
+	le macro personali, infine tra quelle globali.
+*/
+
+
 if (user->room!=NULL && (com_num==-1 || com_level[com_num] > user->level)) {
 	write_user(user,"Unknown command.\n");  return;
 	}
@@ -4214,7 +4250,6 @@ switch(com_num) {
 	case UNDO     : undo(user); break;
 	case ASPECT   : aspect(user,0); break;
 	case JOIN     : join(user); break;
-	case MACRO    : macro(user); break;
 	default: write_user(user,"Command not executed in exec_com().\n");
 	}	
 }
@@ -8937,9 +8972,6 @@ write_user(user,text);
 }
 
 
-
-
-
 path(user)
 UR_OBJECT user;
 {
@@ -9214,60 +9246,58 @@ if (user->level<USER) {
 move_user(user,rm,1);
 } 
 
-
-macro(user)
+run_macro(user,global)
 UR_OBJECT user;
+int global;
 {
 UR_OBJECT u;
-int ret;
+int retval;
+char filename[80],buff[OUT_BUFF_SIZE],*pun,*punb,*name,*macroname;
+FILE *fp;
 
-if (word_count<2) {
-	write_user(user,"usage: .macro <macro name> <object>\n");
-	return;
-	}
-
+/* check delle condizioni... */
 if (user->muzzled) {
 	write_user(user,"You are muzzled, you can't run macros\n");
+	end_macro(user);
 	return;
 	}
-if (!(u=get_user(word[2]))) {
-	write_user(user,notloggedon);	
+
+if (!(u=get_user(user->macro))) {
+	write_user(user,notloggedon);
+	end_macro(user);	
 	return;
 	}
 
 if(user->room!=u->room) {
 	write_user(user,"He isn't here at the moment\n");
+	end_macro(user);
 	return;
 	}
 
 if(u->afk) {
 	write_user(user,"he is afk at the moment\n");
+	end_macro(user);
 	return;
 	}
 
-user->macro=u;
-
-if (!(ret=run_macro(user,word[1]))) {
-	write_user(user,"this macro does not exists\n");
+if (u->ignall) {
+	if (u->malloc_start!=NULL) 
+		sprintf(text,"%s is using the editor at the moment.\n",u->name);
+	else sprintf(text,"%s is ignoring everyone at the moment.\n",u->name);
+	write_user(user,text);
+	end_macro(user);
 	return;
 	}
 
-}
- 
+/* fine check... dimentico qualcosa??? */
 
-run_macro(user,filename)
-UR_OBJECT user;
-char *filename;
-{
-int retval;
-char buff[OUT_BUFF_SIZE],*pun,*punb,*name,*macroname;
-FILE *fp;
+if (global) sprintf(filename,"%s/gmacro",DATAFILES);
+else sprintf(filename,"%s/%s.macro",USERFILES,user->name);
 
-if (!(fp=fopen(filename,"r"))) return 0;
+if (!(fp=fopen(filename,"r"))) return;
 
 text[0]='\0';
 buff[0]='\0';
-user->misc_op=0;
 
 fseek(fp,user->filepos,0);
 
@@ -9276,8 +9306,15 @@ fgets(text,sizeof(text)-1,fp);
 user->filepos+=strlen(text);
 
 if (user->vis) name=user->name; else name=invisname;
+macroname=user->macro;
 
-macroname=user->macro->name;
+/* controlla che non abbia preso su delle righe di controllo,
+   quelle che iniziano con @                                */
+
+while(text[0]=='@') {
+	fgets(text,sizeof(text)-1,fp);
+	user->filepos+=strlen(text);
+	}
 
 /**** ora hai la linea... interpretala ********/
 /* copia la stringa in buff, sostituendo a %1 e %2 i nomi */
@@ -9312,8 +9349,8 @@ while (text[0]!='#') {
 	switch (buff[0]) {
 /* me */	case 'm' : write_user(user,pun); break;
 /* room */	case 'r' : write_room_except(user->room,pun,user); break;
-/* victim */	case 'v' : write_user(user->macro,pun); break;
-/* other */	case 'o' : write_room_except2(user->room,pun,user,user->macro); break;
+/* victim */	case 'v' : write_user(u,pun); break;
+/* other */	case 'o' : write_room_except2(user->room,pun,user,u); break;
 /* all   */     case 'a' : write_room(user->room,pun); break;
 /* shout */     case 's' : write_room(NULL,pun); break;
 		default  : write_user(user,pun); 
@@ -9323,22 +9360,55 @@ while (text[0]!='#') {
 }
 
 if (!(strcmp(text,"#pause\n"))) {
-	user->misc_op=10;
-	strcpy(user->page_file,filename);
-	user->mtime=time(0);
+	if (global) user->misc_op=11;
+	else user->misc_op=10;
 	}
 
 if (!(strcmp(text,"#end\n"))) {
-	user->misc_op=0;
-	user->page_file[0]='\0';
-	user->filepos=0;
+	end_macro(user);
 	}
 	
 fclose(fp);
-return 1;
+}
+
+end_macro(user)
+UR_OBJECT user;
+{
+user->misc_op=0;
+user->filepos=0;
+user->macro[0]='\0';
 }
 
 
+search_for_macro(user,str,global)
+UR_OBJECT user;
+char *str;
+int global;
+{
+FILE *fp;
+char filename[80],buff1[80],buff2[80];
+int pos=0;
+
+if (global) sprintf(filename,"%s/gmacro",DATAFILES);
+else sprintf(filename,"%s/%s.macro",USERFILES,user->name);
+
+if (!(fp=fopen(filename,"r"))) return -1;
+
+text[0]='\0';
+
+fgets(text,sizeof(text)-1,fp);
+
+while (!feof(fp)) {
+	sscanf(text,"%s %s",buff1,buff2);
+	if (!(strcmp(buff1,"@name")) && !(strcmp(buff2,str))) return pos;
+                                                         /* trovata!! */
+	pos+=strlen(text);
+	fgets(text,sizeof(text)-1,fp);
+	}
+
+/* niente da fare... non c'e' */
+return -1;
+}
 
 
 
@@ -9360,7 +9430,8 @@ check_macros() {
 UR_OBJECT user;
         user=user_first;
         while(user!=NULL) {
-                if (user->misc_op==10) run_macro(user,user->page_file);
+                if (user->misc_op==10) run_macro(user,0);
+		if (user->misc_op==11) run_macro(user,1);
                 user=user->next;
 		}
 }
