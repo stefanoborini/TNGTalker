@@ -1617,6 +1617,13 @@ switch(user->login) {
 			disconnect_user(user);  
 			return;
 			}
+		if (user->level>SYSOP) {
+			write_user(user,"\nSorry, the talker is locked out to users of your level.\n\n");
+			sprintf(text,"WARNING! : User %s has a level of %d!\n",user->name,user->level);
+			write_syslog(text,1,TOSYS);
+			disconnect_user(user);
+			return;
+			}
 		}
 	write_user(user,"Give me a password: ");
 	echo_off(user);
@@ -4175,7 +4182,7 @@ switch(com_num) {
 	case FIX      : change_room_fix(user,1,inpstr);  break;
 	case UNFIX    : change_room_fix(user,0,inpstr);  break;
 	case VIEWLOG  : viewlog(user);  break;
-	case ACCREQ   : account_request(user,inpstr);  break;
+	case ACCREQ   : account_request(user);  break;
 	case REVCLR   : revclr(user);  break;
 /*
 	case CREATE   : create_clone(user,inpstr);  break;
@@ -7558,9 +7565,8 @@ write_syslog("ERROR: Line count error in viewlog().\n",0,TOSYS);
 /*** A newbie is requesting an account. Get his email address off him so we
      can validate who he is before we promote him and let him loose as a 
      proper user. ***/
-account_request(user,inpstr)
+account_request(user)
 UR_OBJECT user;
-char *inpstr;
 {
 
 /* This is so some pillock doesnt keep doing it just to fill up the syslog */
@@ -7569,18 +7575,18 @@ if (user->accreq) {
 	return;
 	}
 if (word_count<2) {
-	write_user(user,"Usage: accreq <an email address we can contact you on + any relevent info>\n");
+	write_user(user,"Usage: accreq <an email address we can contact you>\n");
 	return;
 	}
 /* Could check validity of email address I guess but its a waste of time.
    If they give a duff address they don't get an account, simple. ***/
-sprintf(text,"ACCOUNT REQUEST from %s: %s.\n",user->name,inpstr);
+sprintf(text,"ACCOUNT REQUEST from %s: %s.\n",user->name,word[1]);
 write_syslog(text,1,TOSYS);
-sprintf(text,"%s %s\n",user->name,inpstr);
+sprintf(text,"%s %s\n",user->name,word[1]);
 write_syslog(text,1,TOACCOUNT);
-sprintf(text,"~OLSYSTEM:~RS %s has made a request for an account: %s.\n",user->name,inpstr);
+sprintf(text,"~OLSYSTEM:~RS %s has made a request for an account: %s.\n",user->name,word[1]);
 write_level(WIZ,1,text,NULL);
-sprintf(text,"Account request logged : %s is %s\n",user->name,inpstr);
+sprintf(text,"Account request logged : %s is %s\n",user->name,word[1]);
 write_user(user,text);
 
 user->accreq=1;
@@ -9254,8 +9260,7 @@ UR_OBJECT user;
 char *filename;
 {
 int retval;
-char
-buff[OUT_BUFF_SIZE],*pun,*punb,*name,*macroname,dummybuff[OUT_BUFF_SIZE];
+char buff[OUT_BUFF_SIZE],*pun,*punb,*name,*macroname;
 FILE *fp;
 
 if (!(fp=fopen(filename,"r"))) return 0;
@@ -9269,11 +9274,6 @@ fseek(fp,user->filepos,0);
 fgets(text,sizeof(text)-1,fp);
 
 user->filepos+=strlen(text);
-
-sprintf(dummybuff,"%d\n",user->filepos);
-write_user(user,dummybuff);
-
-
 
 if (user->vis) name=user->name; else name=invisname;
 
