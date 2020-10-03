@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts423.h"
+#include "nuts424.h"
 
 #define VERSION "3.3.3"
 
@@ -1687,6 +1687,12 @@ switch(user->login) {
 	user->prompt=prompt_def;
 	user->colour=colour_def;
 	user->charmode_echo=charecho_def;
+	user->path=0;
+	user->read_mail=time(0);
+	user->last_login=time(0);
+	user->total_login=0;
+	user->last_login_len=0;
+
 	save_user_details(user,1);
 	sprintf(text,"New user \"%s\" created.\n",user->name);
 	write_syslog(text,1,TOSYS);
@@ -4311,6 +4317,8 @@ switch(com_num) {
 	case ASPECT   : aspect(user,0); break;
 	case JOIN     : join(user); break;
 	case MACRO    : macro(user); break;
+	case SEE      :
+	case SEND     : send_banner(user); break;
 	default: write_user(user,"Command not executed in exec_com().\n");
 	}	
 }
@@ -9693,6 +9701,124 @@ fclose(ftemp);
 unlink("tempfile");
 
 }
+
+
+send_banner(user)
+UR_OBJECT user;
+{
+FILE *fp;
+char filename[80];
+char line[122];
+UR_OBJECT u;
+int flag=0;
+
+if (com_num==SEE) {
+	if (word_count<2) strcpy(word[1],"bannerlist");
+	sprintf(filename,"%s/%s.banner",BANNERDIR,word[1]);
+	if (!(fp=fopen(filename,"r"))) {
+		write_user(user,"This banner does not exist...\n");
+		return;
+		}
+	fgets(line,120,fp);
+	while (!feof(fp)) {
+		write_user(user,line);
+		fgets(line,120,fp);
+		}
+	fclose(fp);
+	return;
+	}
+
+if (user->muzzled) {
+	write_user(user,"You are muzzled, you can't send banners...\n");
+	return;
+	}
+
+if (word_count<3) {
+        write_user(user,"Usage: .send <user> <banner name>\n");
+	return;
+        }
+
+if (!(strcmp(word[1],"all"))) flag=1;
+if (!(strcmp(word[1],"allin"))) flag=2;
+
+if ((u=get_user(word[1]))==NULL && !flag) {
+	write_user(user,notloggedon);
+	return;
+	}
+
+if (!flag) {
+	if (u==user) {
+		write_user(user,"Why don't you try .see <banner> instead?\n");
+		return;
+		}
+ 
+	if (u->ignall) {
+		write_user(user,"He is ignoring everyone at the moment...\n");
+		return;
+		}
+
+	if (u->afk) {
+		write_user(user,"He is afk at the moment...\n");
+		return;
+		}
+
+	if (u->room==NULL) {
+	        sprintf(text,"%s is offsite.\n",u->name);        
+		write_user(user,text);
+	        return;
+	        }
+	}
+
+
+sprintf(filename,"%s/%s.banner",BANNERDIR,word[2]);
+
+if (!(fp=fopen(filename,"r"))) {
+	write_user(user,"This banner does not exist...\n");
+	return;
+	}
+
+if (!flag) {
+	fgets(line,120,fp);
+	while (!feof(fp)) {
+		write_user(u,line);
+		fgets(line,120,fp);
+		}
+	sprintf(text,"~FM************* From %s to You *************\n",user->name);
+	write_user(u,text);
+	}
+else {
+	for (u=user_first;u!=NULL;u=u->next) {
+		if (u==user || u->ignall || u->afk || u->room==NULL ||
+                   (flag==2 && u->room!=user->room)) continue;
+		fgets(line,120,fp);
+		while (!feof(fp)) {
+			write_user(u,line);
+			fgets(line,120,fp);
+			}
+		sprintf(text,"~FM************* From %s to All *************\n",user->name);
+		write_user(u,text);
+		fseek(fp,0,0);
+		}
+	}
+
+fclose(fp);	
+write_user(user,"Banner sent...\n");
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
