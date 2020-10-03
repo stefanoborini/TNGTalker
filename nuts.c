@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts424.h"
+#include "nuts425.h"
 
 #define VERSION "3.3.3"
 
@@ -303,6 +303,10 @@ if (site_banned(site)) {
 	write_syslog(text,1,TOSYS);
 	return;
 	}
+
+sprintf(text,"Login initiated from %s\n",site);
+write_syslog(text,1,TOSYS);
+
 more(NULL,accept_sock,MOTD1); /* send pre-login message */
 if (num_of_users+num_of_logins>=max_users && !num) {
 	write_sock(accept_sock,"\n\rSorry, the talker is full at the moment.\n\n\r");
@@ -1079,6 +1083,7 @@ return -1;
 /*** Initialise globals ***/
 init_globals()
 {
+int i=0;
 verification[0]='\0';
 port[0]=0;
 port[1]=0;
@@ -1127,6 +1132,8 @@ nl_first=NULL;
 nl_last=NULL;
 clear_words();
 time(&boot_time);
+for(i=0;i<REVSHOUT_LINES;++i) revshout[i][0]='\0';
+revline=0;
 }
 
 
@@ -1554,6 +1561,8 @@ switch(user->login) {
 		disconnect_user(user);  return;
 		}
 	if (!strcmp(name,"who")) {
+		sprintf(text,"Who request from site %s\n",user->site);
+		write_syslog(text,1,TOSYS);
 		who(user,0);  
 		write_user(user,"\nGive me a name: ");
 		return;
@@ -1620,7 +1629,7 @@ switch(user->login) {
 			}
 		if (user->level>SYSOP) {
 			write_user(user,"\nSorry, the talker is locked out to users of your level.\n\n");
-			sprintf(text,"WARNING! : User %s has a level of %d!\n",user->name,user->level);
+			sprintf(text,"WARNING! : User %s has a level of %d from %s!\n",user->name,user->level,user->site);
 			write_syslog(text,1,TOSYS);
 			disconnect_user(user);
 			return;
@@ -1651,6 +1660,8 @@ switch(user->login) {
 		if (!strcmp(user->pass,(char *)crypt(passwd,"NU"))) {
 			echo_on(user);  connect_user(user);  return;
 			}
+		sprintf(text,"Error login to user %s from %s\n",user->name,user->site);
+		write_syslog(text,1,TOSYS);
 		write_user(user,"\n\nIncorrect login.\n\n");
 		attempts(user);
 		}
@@ -1726,30 +1737,59 @@ load_user_details(user)
 UR_OBJECT user;
 {
 FILE *fp;
-char line[81],filename[80];
-int temp1,temp2,temp3;
+char *remove_first();
+char line[120],filename[80];
+int temp1,temp2,temp3,kw_code;
+char kw[20],*pun;
+char *keyword[]={
+"NAME","PASS","DATA","SITE","DESC","INPHR","OUTPHR","*"
+};
 
 sprintf(filename,"%s/%s.D",USERFILES,user->name);
 if (!(fp=fopen(filename,"r"))) return 0;
 
-fscanf(fp,"%s",user->pass); /* password */
-fscanf(fp,"%d %d %d %d %d %d %d %d %d %d %d",&temp1,&temp2,&user->last_login_len,&temp3,&user->level,&user->prompt,&user->muzzled,&user->charmode_echo,&user->command_mode,&user->colour,&user->path);
-user->last_login=(time_t)temp1;
-user->total_login=(time_t)temp2;
-user->read_mail=(time_t)temp3;
-fscanf(fp,"%s\n",user->last_site);
+fgets(line,82,fp);
 
-/* Need to do the rest like this 'cos they may be more than 1 word each */
-fgets(line,USER_DESC_LEN+2,fp);
-line[strlen(line)-1]=0;
-strcpy(user->desc,line); 
-fgets(line,PHRASE_LEN+2,fp);
-line[strlen(line)-1]=0;
-strcpy(user->in_phrase,line); 
-fgets(line,PHRASE_LEN+2,fp);
-line[strlen(line)-1]=0;
-strcpy(user->out_phrase,line); 
-fscanf(fp,"%c",&user->sex);
+while (!feof(fp)) {
+	sscanf(line,"%s",kw);
+        kw_code=0;
+        while(keyword[kw_code][0]!='*') {
+                if (!strcmp(keyword[kw_code],kw))  break;
+                kw_code++;
+               	}
+	switch(kw_code) {
+		case 0: break;
+		case 1: /* password */
+			sscanf(line,"%*s %s",user->pass);
+			break;
+		case 2: /* data */
+			sscanf(line,"%*s %d %d %d %d %d %d %d %d %d %d %d %c",&temp1,&temp2,&user->last_login_len,&temp3,&user->level,&user->prompt,&user->muzzled,&user->charmode_echo,&user->command_mode,&user->colour,&user->path,&user->sex);
+			user->last_login=(time_t)temp1;
+			user->total_login=(time_t)temp2;
+			user->read_mail=(time_t)temp3;
+			break;
+		case 3: /* last site */
+			sscanf(line,"%*s %s\n",user->last_site);
+			break;
+		case 4: /* desc */
+			pun=remove_first(line);
+			line[strlen(line)-1]=0;
+			strcpy(user->desc,pun);
+			break;
+		case 5: /* inphr */
+			pun=remove_first(line);
+			line[strlen(line)-1]=0;
+			strcpy(user->in_phrase,pun); 
+			break;
+		case 6: /* outphr */
+			pun=remove_first(line);
+			line[strlen(line)-1]=0;
+			strcpy(user->out_phrase,pun);
+			break;
+		}
+	fgets(line,82,fp);
+	}
+
 fclose(fp);
 return 1;
 }
@@ -1773,17 +1813,17 @@ if (!(fp=fopen(filename,"w"))) {
 	write_syslog(text,1,TOSYS);
 	return 0;
 	}
-fprintf(fp,"%s\n",user->pass);
+fprintf(fp,"NAME %s\n",user->name);
+fprintf(fp,"PASS %s\n",user->pass);
 if (save_current)
-	fprintf(fp,"%d %d %d ",(int)time(0),(int)user->total_login,(int)(time(0)-user->last_login));
-else fprintf(fp,"%d %d %d ",(int)user->last_login,(int)user->total_login,user->last_login_len);
-fprintf(fp,"%d %d %d %d %d %d %d %d\n",(int)user->read_mail,user->level,user->prompt,user->muzzled,user->charmode_echo,user->command_mode,user->colour,user->path);
-if (save_current) fprintf(fp,"%s\n",user->site);
-else fprintf(fp,"%s\n",user->last_site);
-fprintf(fp,"%s\n",user->desc);
-fprintf(fp,"%s\n",user->in_phrase);
-fprintf(fp,"%s\n",user->out_phrase);
-fprintf(fp,"%c\n",user->sex);
+	fprintf(fp,"DATA %d %d %d ",(int)time(0),(int)user->total_login,(int)(time(0)-user->last_login));
+else fprintf(fp,"DATA %d %d %d ",(int)user->last_login,(int)user->total_login,user->last_login_len);
+fprintf(fp,"%d %d %d %d %d %d %d %d %c\n",(int)user->read_mail,user->level,user->prompt,user->muzzled,user->charmode_echo,user->command_mode,user->colour,user->path,user->sex);
+if (save_current) fprintf(fp,"SITE %s\n",user->site);
+else fprintf(fp,"SITE %s\n",user->last_site);
+fprintf(fp,"DESC %s\n",user->desc);
+fprintf(fp,"INPHR %s\n",user->in_phrase);
+fprintf(fp,"OUTPHR %s\n",user->out_phrase);
 fclose(fp);
 return 1;
 }
@@ -2212,6 +2252,15 @@ user->revbuff[user->revline][REVIEW_LEN+1]='\0';
 user->revline=(user->revline+1)%REVTELL_LINES;
 }
 
+/*** Records shouts and semotes ***/
+record_shout(str)
+char *str;
+{
+strncpy(revshout[revline],str,REVIEW_LEN);
+revshout[revline][REVIEW_LEN]='\n';
+revshout[revline][REVIEW_LEN+1]='\0';
+revline=(revline+1)%REVSHOUT_LINES;
+}
 
 
 /*** Set room access back to public if not enough users in room ***/
@@ -2910,6 +2959,14 @@ RM_OBJECT rm;
 int c;
 for(c=0;c<REVIEW_LINES;++c) rm->revbuff[c][0]='\0';
 rm->revline=0;
+}
+
+/*** Clear the shout review buffer ***/
+clear_revshout()
+{
+int c;
+for(c=0;c<REVSHOUT_LINES;++c) revshout[c][0]='\0';
+revline=0;
 }
 
 
@@ -4319,6 +4376,8 @@ switch(com_num) {
 	case MACRO    : macro(user); break;
 	case SEE      :
 	case SEND     : send_banner(user); break;
+	case REVSH    : revsh(user); break;
+	case CLRSH    : clrsh(user); break;
 	default: write_user(user,"Command not executed in exec_com().\n");
 	}	
 }
@@ -4590,6 +4649,7 @@ write_user(user,text);
 if (user->vis) name=user->name; else name=invisname;
 sprintf(text,"~OL%s shouts:~RS %s\n",name,inpstr);
 write_room_except(NULL,text,user);
+record_shout(text);
 }
 
 
@@ -4693,6 +4753,7 @@ if (user->vis) name=user->name; else name=invisname;
 if (inpstr[0]=='#') sprintf(text,"~OL!!~RS %s%s\n",name,inpstr+1);
 else sprintf(text,"~OL!!~RS %s %s\n",name,inpstr);
 write_room(NULL,text);
+record_shout(text);
 }
 
 
@@ -7692,6 +7753,19 @@ sprintf(text,"%s has cleared the review buffer.\n",name);
 write_room_except(user->room,text,user);
 }
 
+/*** Clear the review buffer ***/
+clrsh(user)
+UR_OBJECT user;
+{
+char *name;
+
+clear_revshout(); 
+write_user(user,"Shout Review buffer cleared.\n");
+if (user->vis) name=user->name; else name=invisname;
+sprintf(text,"%s has cleared the shout review buffer.\n",name);
+write_room_except(user->room,text,user);
+}
+
 #if 0
 
 /*** Clone a user in another room 
@@ -8320,6 +8394,25 @@ for(i=0;i<REVTELL_LINES;++i) {
 		}
 	}
 if (!cnt) write_user(user,"Revtell buffer is empty.\n");
+else write_user(user,"\n~BB~FG*** End ***~RS\n\n");
+}
+
+/*** Show recorded tells and pemotes ***/
+revsh(user)
+UR_OBJECT user;
+{
+int i,cnt,line;
+
+cnt=0;
+for(i=0;i<REVSHOUT_LINES;++i) {
+	line=(revline+i)%REVSHOUT_LINES;
+	if (revshout[line][0]) {
+		cnt++;
+		if (cnt==1) write_user(user,"\n~BB~FG*** Revshout buffer ***~RS\n\n");
+		write_user(user,revshout[line]); 
+		}
+	}
+if (!cnt) write_user(user,"Revshout buffer is empty.\n");
 else write_user(user,"\n~BB~FG*** End ***~RS\n\n");
 }
 
