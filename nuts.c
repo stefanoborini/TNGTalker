@@ -8441,12 +8441,12 @@ char *inpstr;
 
 if (word_count<2) {	
 	if(user->level>=ADVANCED) {
-		write_user(user,"usage: .room [open/link/slink/map/desc/status/reload/delete] <other info...>\n");
+		write_user(user,"usage: .room [open/link/slink/unlink/map/desc/status/reload/delete] <other info...>\n");
 	        sprintf(text,"\n"); 
 		return;
 		}
 	if(user->level>MAGHETTO && user->level<ADVANCED) {
-		write_user(user,"usage: .room [open/link/slink/map/desc/status/reload] <other info...>\n");
+		write_user(user,"usage: .room [open/link/slink/unlink/map/desc/status/reload] <other info...>\n");
 	        sprintf(text,"\n"); 
 		return;
 		}
@@ -8587,7 +8587,7 @@ strcpy(room->name,inpstr);
 strcpy(room->label,inpstr);
 
 room->access=FIXED_PUBLIC;
-strcpy(room->maptype,"a");
+strcpy(room->maptype,"none");
 
 sprintf(text,"%s successfully created room %s \n",user->name,room->name);
 
@@ -8790,7 +8790,7 @@ UR_OBJECT user;
 RM_OBJECT rm;
 char filename[80];
 FILE *fp;
-char c;
+char *c;
 int i;
 
 rm=user->room;
@@ -8808,7 +8808,7 @@ if (!(fp=fopen(filename,"r"))) {
         }
 
 i=0;
-c=getc(fp);
+*c=getc(fp);
 while(!feof(fp)) {
         if (i==ROOM_DESC_LEN) {
                 sprintf(text,"~OL~FWERROR : ~FRDescription too long...max %d chars\n",ROOM_DESC_LEN);
@@ -8818,8 +8818,8 @@ while(!feof(fp)) {
                 write_syslog(text,1,TOSYS);
                 break;
                 }
-        rm->desc[i]=c;
-        c=getc(fp);  ++i;
+        rm->desc[i]=*c;
+        *c=getc(fp);  ++i;
 }
 rm->desc[i]='\0';
 fclose(fp);
