@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts425.h"
+#include "nuts426.h"
 
 #define VERSION "3.3.3"
 
@@ -609,30 +609,6 @@ for(rm1=room_first;rm1!=NULL;rm1=rm1->next) {
 		}
 	}
 
-/* Load room descriptions */
-for(rm1=room_first;rm1!=NULL;rm1=rm1->next) {
-	sprintf(filename,"%s/%s.R",DATAFILES,rm1->name);
-	if (!(fp=fopen(filename,"r"))) {
-		fprintf(stderr,"NUTS: Can't open description file for room %s.\n",rm1->name);
-		sprintf(text,"ERROR: Couldn't open description file for room %s.\n",rm1->name);
-		write_syslog(text,0,TOSYS);
-		continue;
-		}
-	i=0;
-	c=getc(fp);
-	while(!feof(fp)) {
-		if (i==ROOM_DESC_LEN) {
-			fprintf(stderr,"NUTS: Description too long for room %s.\n",rm1->name);
-			sprintf(text,"ERROR: Description too long for room %s.\n",rm1->name);
-			write_syslog(text,0,TOSYS);
-			break;
-			}
-		rm1->desc[i]=c;  
-		c=getc(fp);  ++i;
-		}
-	rm1->desc[i]='\0';
-	fclose(fp);
-	}
 }
 
 
@@ -3150,7 +3126,6 @@ if ((room=(RM_OBJECT)malloc(sizeof(struct room_struct)))==NULL) {
 	}
 room->name[0]='\0';
 room->label[0]='\0';
-room->desc[0]='\0';
 room->topic[0]='\0';
 room->maptype[0]='\0';
 room->access=-1;
@@ -3251,8 +3226,7 @@ for(u=user_first;u!=NULL;u=u->next) {
 
 /************ NUTS PROTOCOL AND LINK MANAGEMENT FUNCTIONS ************/
 /* Please don't alter these functions. If you do you may introduce 
-   incompatabilities which may prevent other systems connecting
-or cause
+   incompatabilities which may prevent other systems connecting or cause
    bugs on the remote site and yours. You may think it looks simple but
    even the newline count is important in some places. */
 
@@ -4398,17 +4372,6 @@ char tvar[ROOM_NAME_LEN+1];
 char filename[80];
 int ret;
 
-/*****************************************
-punto di controllo delle word 
-
-decommentare per attivare 
-
-		sprintf(text,"looking :\n0.%s\n 1.%s\n 2.%s\n 3.%s\n",word[0],word[1],word[2],word[3]);
-		write_user(user_first,text);
-
-*******************************************/
-
-
 if (word[1][0] && direct_call) {
 	if (u=get_user(word[1])) {
 		if (u->room==user->room) {
@@ -4447,7 +4410,16 @@ delump(tvar);
 if (rm->access & PRIVATE) sprintf(text,"\n~FTRoom: ~FR%s\n\n",tvar);
 else sprintf(text,"\n~FTRoom: ~FG%s\n\n",tvar);
 write_user(user,text);
+/*
 write_user(user,user->room->desc);
+*/
+
+sprintf(filename,"%s/%s.R",DATAFILES,rm->name);
+
+if(!more(user,user->socket,filename)) 
+	write_user(user,"Sei avvolto da una fitta oscurita'.\n");
+
+
 exits=0;  null[0]='\0';
 strcpy(text,"\n~FTExits are:");
 for(i=0;i<MAX_LINKS;++i) {
@@ -5213,6 +5185,7 @@ UR_OBJECT user;
 UR_OBJECT u;
 RM_OBJECT rm;
 char *name;
+char tvar[ROOM_NAME_LEN+1];
 
 if (word_count<2) {
 	write_user(user,"Invite who?\n");  return;
@@ -5242,7 +5215,9 @@ if (u->invite_room==rm) {
 sprintf(text,"You invite %s in.\n",u->name);
 write_user(user,text);
 if (user->vis) name=user->name; else name=invisname;
-sprintf(text,"%s has invited you into the %s.\n",name,rm->name);
+strcpy(tvar,rm->name);
+delump(tvar);
+sprintf(text,"%s has invited you into the %s.\n",name,tvar);
 write_user(u,text);
 u->invite_room=rm;
 }
@@ -8542,12 +8517,12 @@ char *inpstr;
 
 if (word_count<2) {	
 	if(user->level>=ADVANCED) {
-		write_user(user,"usage: .room [open/link/slink/map/desc/status/reload/delete] <other info...>\n");
+		write_user(user,"usage: .room [open/link/slink/map/desc/status/delete] <other info...>\n");
 	        sprintf(text,"\n"); 
 		return;
 		}
 	if(user->level>MAGHETTO && user->level<ADVANCED) {
-		write_user(user,"usage: .room [open/link/slink/map/desc/status/reload] <other info...>\n");
+		write_user(user,"usage: .room [open/link/slink/map/desc/status] <other info...>\n");
 	        sprintf(text,"\n"); 
 		return;
 		}
@@ -8616,12 +8591,6 @@ if (!(strcmp("status",word[1]))) {
 	return;
 	}
 
-
-if (!(strcmp("reload",word[1]))) {
-	if (user->level<WIZ) { write_user(user,"Invalid option\n"); return; }
-	room_reload(user);
-	return;
-	}
 
 if (!(strcmp("delete",word[1]))) {
 	if (user->level<ADVANCED) { write_user(user,"Invalid option\n"); return; }
@@ -8881,51 +8850,6 @@ sprintf(text,"%s has changed the %s desc\n",user->name, rm->name);
 write_syslog(text,1,TOROOM);
 write_syslog(text,1,TOSYS);
 
-room_reload(user);
-}
-
-
-room_reload(user)
-UR_OBJECT user;
-{
-RM_OBJECT rm;
-char filename[80];
-FILE *fp;
-char c;
-int i;
-
-rm=user->room;
-
-sprintf(filename,"%s/%s.R",DATAFILES,rm->name);
-
-
-if (!(fp=fopen(filename,"r"))) {
-        sprintf(text,"~OL~FWERROR : ~FRCouldn't re-open description file.\n");
-        write_user(user,text);
-        sprintf(text,"ERROR: couldn't read file %s\n",filename);
-        write_syslog(text,1,TOROOM);
-        write_syslog(text,1,TOSYS);
-        return;
-        }
-
-i=0;
-c=getc(fp);
-while(!feof(fp)) {
-        if (i==ROOM_DESC_LEN) {
-                sprintf(text,"~OL~FWERROR : ~FRDescription too long...max %d chars\n",ROOM_DESC_LEN);
-                write_user(user,text);
-                sprintf(text,"ERROR: room desc too long in file %s",filename);
-                write_syslog(text,1,TOROOM);
-                write_syslog(text,1,TOSYS);
-                break;
-                }
-        rm->desc[i]=c;
-        c=getc(fp);  ++i;
-}
-rm->desc[i]='\0';
-fclose(fp);
-
-write_user(user,"~OL~FWSYSTEM : ~FGdescription loaded\n");
 }
 
 
