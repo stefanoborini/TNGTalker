@@ -3,6 +3,8 @@
 #define DATAFILES "datafiles"  
 #define FILEDIR   "filedir"   
 #define LOGDIR    "logdir"
+#define NGDIR "newsgroup"
+#define NGLIST "nglist"
 #define GLOBALMACRO  "gmacro"
 #define MACRODIR "macrodir"
 #define BANNERDIR "bannerdir"
@@ -106,6 +108,9 @@ struct user_struct {
 	struct room_struct *temp_room;
 	char prompt_string[USER_PROMPT_LEN+1];
 	char shortcut[MAX_USER_SHORTCUT][WORD_LEN+1];
+	int prompt_op,submisc_op,misc_op_store;
+	char newsgroup_opening_file[120];
+	int newsgroup_temporary_int,id;
 /**************************/
 	char in_phrase[PHRASE_LEN+1],out_phrase[PHRASE_LEN+1];
 	char buff[BUFSIZE],site[81],last_site[81],page_file[81];
@@ -392,6 +397,5 @@ int charecho_def,time_out_maxlevel;
 time_t rs_announce,rs_which;
 UR_OBJECT rs_user;
 
-
-extern char *sys_errlist[];
+extern const char *const sys_errlist[];
 char *long_date();
