@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts427.h"
+#include "nuts428.h"
 
 #define VERSION "3.3.3"
 
@@ -1072,6 +1072,11 @@ fgets(line,82,fp);
 
 while (!feof(fp)) {
 	line_num++;
+	if (line[0]=='\n') {
+		fgets(line,82,fp);
+		continue;
+		}
+	kw[0]='\0';
 	sscanf(line,"%s",kw);
 	kw_code=0;
 	while(keyword[kw_code][0]!='*') {
@@ -1675,12 +1680,6 @@ for(u=user_first;u!=NULL;u=u->next) {
 
 
 
-
-
-
-
-
-
 /*** Write a string to system log ***/
 write_syslog(str,write_time,fil)
 char *str;
@@ -1872,6 +1871,7 @@ switch(user->login) {
 	user->last_login=time(0);
 	user->total_login=0;
 	user->last_login_len=0;
+	user->room=room_first;
 	save_user_details(user,1);
 	sprintf(text,"New user \"%s\" created.\n",user->name);
 	write_syslog(text,1,TOSYS);
@@ -1897,7 +1897,8 @@ if (user->attempts==3) {
 user->login=4;
 user->pass[0]='\0';
 for (i=0;i<MAX_USER_CHANNEL;++i) user->channel[i]=NULL;
-user->room=NULL;
+for (i=0;i<MAX_USER_ALIAS;++i) user->alias[i][0]='\0';
+user->room=room_first;
 write_user(user,"Give me a name: ");
 echo_on(user);
 }
@@ -1911,18 +1912,24 @@ UR_OBJECT user;
 FILE *fp;
 RM_OBJECT get_room();
 char *remove_first();
-char line[120],filename[80];
+char line[120],filename[80],last_name[USER_NAME_LEN+1];
 int temp1,temp2,temp3,kw_code,i;
-char kw[20],*pun,temp[120];
+char kw[20],*pun,temp[120],tempa[120];
+int got_it=0,retval=0;
 CH_OBJECT ch;
 char *keyword[]={
-"NAME","PASS","DATA","SITE","DESC","INPHR","OUTPHR","CHAN","ROOM","*"
+"NAME", "PASS",  "DATA", "SITE", "DESC",
+"INPHR","OUTPHR","CHAN", "ROOM", "ALIAS",
+"END", "*"
 };
 
-sprintf(filename,"%s/%s.D",USERFILES,user->name);
+sprintf(filename,"%s/%s",DATAFILES,USERDATA);
 if (!(fp=fopen(filename,"r"))) return 0;
 
 fgets(line,82,fp);
+
+/* non molto ottimizzato ma funziona.. ci tornero' su quando avro'
+ piu' tempo */
 
 while (!feof(fp)) {
 	sscanf(line,"%s",kw);
@@ -1932,35 +1939,56 @@ while (!feof(fp)) {
                 kw_code++;
                	}
 	switch(kw_code) {
-		case 0: break;
+		case 0: /* name */
+			sscanf(line,"%*s %s",temp);
+			strcpy(last_name,temp);
+			if (!(strcmp(temp,user->name))) {
+				got_it=1;
+				retval=1;
+				break;
+				}
+
 		case 1: /* password */
+			if (!got_it) break;
 			sscanf(line,"%*s %s",user->pass);
 			break;
+
 		case 2: /* data */
+			if (!got_it) break;
 			sscanf(line,"%*s %d %d %d %d %d %d %d %d %d %d %d %c",&temp1,&temp2,&user->last_login_len,&temp3,&user->level,&user->prompt,&user->muzzled,&user->charmode_echo,&user->command_mode,&user->colour,&user->path,&user->sex);
 			user->last_login=(time_t)temp1;
 			user->total_login=(time_t)temp2;
 			user->read_mail=(time_t)temp3;
 			break;
+
 		case 3: /* last site */
+			if (!got_it) break;
 			sscanf(line,"%*s %s\n",user->last_site);
 			break;
+
 		case 4: /* desc */
+			if (!got_it) break;
 			pun=remove_first(line);
 			line[strlen(line)-1]=0;
 			strcpy(user->desc,pun);
 			break;
+
 		case 5: /* inphr */
+			if (!got_it) break;
 			pun=remove_first(line);
 			line[strlen(line)-1]=0;
 			strcpy(user->in_phrase,pun); 
 			break;
+
 		case 6: /* outphr */
+			if (!got_it) break;
 			pun=remove_first(line);
 			line[strlen(line)-1]=0;
 			strcpy(user->out_phrase,pun);
 			break;
+
 		case 7: /* channel */
+			if (!got_it) break;
 			sscanf(line,"%*s %s",temp);
 			for (ch=ch_first;ch!=NULL;ch=ch->next) {
 				if (!(strcmp(ch->name,temp))) {
@@ -1973,19 +2001,41 @@ while (!feof(fp)) {
 			break;
 		
 		case 8: /* room */
+			if (!got_it) break;
 			sscanf(line,"%*s %s",temp);
-			if ((user->room=get_room(temp,NULL))==NULL)
-				user->room=room_first;
-			else if (user->room->access==PRIVATE)
+			if ((user->room=get_room(temp,NULL))==NULL ||
+				user->room->access==PRIVATE)
 				user->room=room_first;
 			break;
 
+		case 9: /* alias */
+			sscanf(line,"%*s %s",temp);
+			if (!got_it) {
+				strcpy(tempa,user->name);
+				tempa[0]=tolower(tempa[0]);
+				if (!(strcmp(temp,tempa))) {
+					strcpy(user->name,last_name);
+					fseek(fp,0,0);
+					}
+				break;
+				}
+			for(i=0;i<MAX_USER_ALIAS;++i)
+				if (user->alias[i][0]=='\0') break;
+			if (i==MAX_USER_ALIAS) break;
+			strcpy(user->alias[i],temp);
+			break;
+
+		case 10: /* end */
+			if (!got_it) break;
+			fclose(fp);
+			return 1;
+			break;
 		}
 	fgets(line,82,fp);
 	}
 
 fclose(fp);
-return 1;
+return retval;
 }
 
 
@@ -1995,36 +2045,97 @@ save_user_details(user,save_current)
 UR_OBJECT user;
 int save_current;
 {
-FILE *fp;
+FILE *fp,*tmp;
 char filename[80];
-int i;
+char line[120];
+char temp1[20],temp2[120];
+int i,flag=0;
 
 if (user->type==REMOTE_TYPE || user->type==CLONE_TYPE) return 0;
-sprintf(filename,"%s/%s.D",USERFILES,user->name);
-if (!(fp=fopen(filename,"w"))) {
-	sprintf(text,"%s: failed to save your details.\n",syserror);	
+if (user->room==NULL) user->room=room_first;
+
+sprintf(filename,"%s/%s",DATAFILES,USERDATA);
+if (!(fp=fopen(filename,"r"))) {
+	sprintf(text,"%s: failed to load your details.\n",syserror);	
 	write_user(user,text);
-	sprintf(text,"SAVE_USER_STATS: Failed to save %s's details.\n",user->name);
+	sprintf(text,"SAVE_USER_STATS: Failed to load %s's details.\n",user->name);
 	write_syslog(text,1,TOSYS);
 	return 0;
 	}
-fprintf(fp,"NAME %s\n",user->name);
-fprintf(fp,"PASS %s\n",user->pass);
-if (save_current)
-	fprintf(fp,"DATA %d %d %d ",(int)time(0),(int)user->total_login,(int)(time(0)-user->last_login));
-else fprintf(fp,"DATA %d %d %d ",(int)user->last_login,(int)user->total_login,user->last_login_len);
-fprintf(fp,"%d %d %d %d %d %d %d %d %c\n",(int)user->read_mail,user->level,user->prompt,user->muzzled,user->charmode_echo,user->command_mode,user->colour,user->path,user->sex);
-if (save_current) fprintf(fp,"SITE %s\n",user->site);
-else fprintf(fp,"SITE %s\n",user->last_site);
-fprintf(fp,"DESC %s\n",user->desc);
-fprintf(fp,"INPHR %s\n",user->in_phrase);
-fprintf(fp,"OUTPHR %s\n",user->out_phrase);
-for(i=0;i<MAX_USER_CHANNEL;++i) {
-	if (user->channel[i]==NULL) break;
-	fprintf(fp,"CHAN %s\n",user->channel[i]->name);
+
+if (!(tmp=fopen("tempfile","w"))) {
+        sprintf(text,"%s: failed to save your details.\n",syserror);
+	write_user(user,text);
+        sprintf(text,"SAVE_USER_STATS: Failed to load %s's details.\n",user->name);        
+	write_syslog(text,1,TOSYS);
+	fclose(fp);
+	return 0;
 	}
-fprintf(fp,"ROOM %s\n",user->room->name);
+
+fgets(line,82,fp);
+
+while (!feof(fp)) {
+	sscanf(line,"%s %s",temp1,temp2);
+	if ( (!(strcmp(temp1,"NAME"))) && (!(strcmp(temp2,user->name))) ) {
+		fprintf(tmp,"NAME %s\n",user->name);
+		fprintf(tmp,"PASS %s\n",user->pass);
+		if (save_current)
+			fprintf(tmp,"DATA %d %d %d ",(int)time(0),(int)user->total_login,(int)(time(0)-user->last_login));
+		else fprintf(tmp,"DATA %d %d %d ",(int)user->last_login,(int)user->total_login,user->last_login_len);
+		fprintf(tmp,"%d %d %d %d %d %d %d %d %c\n",(int)user->read_mail,user->level,user->prompt,user->muzzled,user->charmode_echo,user->command_mode,user->colour,user->path,user->sex);
+		if (save_current) fprintf(tmp,"SITE %s\n",user->site);
+		else fprintf(tmp,"SITE %s\n",user->last_site);
+		fprintf(tmp,"DESC %s\n",user->desc);
+		fprintf(tmp,"INPHR %s\n",user->in_phrase);
+		fprintf(tmp,"OUTPHR %s\n",user->out_phrase);
+		for(i=0;i<MAX_USER_CHANNEL;++i) {
+			if (user->channel[i]==NULL) break;
+			fprintf(tmp,"CHAN %s\n",user->channel[i]->name);
+			}
+		for(i=0;i<MAX_USER_ALIAS;++i) {
+			if (user->alias[i][0]=='\0') break;
+			fprintf(tmp,"ALIAS %s\n",user->alias[i]);
+			}
+		fprintf(tmp,"ROOM %s\n",user->room->name);
+		fprintf(tmp,"END\n");
+		while (strncmp(line,"END",3)) fgets(line,82,fp);
+		fgets(line,82,fp);
+		flag=1;
+		continue;
+		}
+	fprintf(tmp,"%s",line);
+	fgets(line,82,fp);
+	}
+
+if (!flag) {
+	fprintf(tmp,"NAME %s\n",user->name);
+	fprintf(tmp,"PASS %s\n",user->pass);
+	if (save_current)
+		fprintf(tmp,"DATA %d %d %d ",(int)time(0),(int)user->total_login,(int)(time(0)-user->last_login));
+	else fprintf(tmp,"DATA %d %d %d ",(int)user->last_login,(int)user->total_login,user->last_login_len);
+	fprintf(tmp,"%d %d %d %d %d %d %d %d %c\n",(int)user->read_mail,user->level,user->prompt,user->muzzled,user->charmode_echo,user->command_mode,user->colour,user->path,user->sex);
+	if (save_current) fprintf(tmp,"SITE %s\n",user->site);
+	else fprintf(tmp,"SITE %s\n",user->last_site);
+	fprintf(tmp,"DESC %s\n",user->desc);
+	fprintf(tmp,"INPHR %s\n",user->in_phrase);
+	fprintf(tmp,"OUTPHR %s\n",user->out_phrase);
+	for(i=0;i<MAX_USER_CHANNEL;++i) {
+		if (user->channel[i]==NULL) break;
+		fprintf(tmp,"CHAN %s\n",user->channel[i]->name);
+		}
+	for(i=0;i<MAX_USER_ALIAS;++i) {
+		if (user->alias[i][0]=='\0') break;
+		fprintf(tmp,"ALIAS %s\n",user->alias[i]);
+		}
+	fprintf(tmp,"ROOM %s\n",user->room->name);
+	fprintf(tmp,"END\n");
+	}
+
 fclose(fp);
+fclose(tmp);
+
+rename("tempfile",filename);
+
 return 1;
 }
 
@@ -2812,8 +2923,54 @@ fclose(fp);
 fclose(temp);
 
 rename("tempfile",filename);
+}
+
+
+remove_from_user_file(name)
+char *name;
+{
+FILE *fp,*tmp;
+char filename[80];
+char line[120];
+char temp1[20],temp2[120];
+
+sprintf(filename,"%s/%s",DATAFILES,USERDATA);
+
+if (!(fp=fopen(filename,"r"))) {
+	write_syslog("SAVE_USER_STATS: Failed to open userdata file in remove_from_user_file.\n",1,TOSYS);
+	return;
+	}
+
+
+if (!(tmp=fopen("tempfile","w"))) {
+        write_syslog("SAVE_USER_STATS: Failed to open temp file in remove_from_user_file.\n",1,TOSYS);
+        fclose(fp);
+        return;
+        }
+
+fgets(line,82,fp);
+
+while (!feof(fp)) {
+	sscanf(line,"%s %s",temp1,temp2);
+	if ( (!(strcmp(temp1,"NAME"))) && (!(strcmp(temp2,name))) ) {
+		while (strncmp(line,"END",3)) fgets(line,82,fp);
+	        fgets(line,82,fp);
+		continue;
+		}
+	fprintf(tmp,"%s",line);
+	fgets(line,82,fp);
+	}
+fclose (fp);
+fclose (tmp);
+
+rename("tempfile",filename);
 
 }
+
+
+
+
+
 
 
 
@@ -2822,6 +2979,10 @@ UR_OBJECT get_user(name)
 char *name;
 {
 UR_OBJECT u;
+int i;
+char namelow[USER_NAME_LEN+1];
+
+strcpy(namelow,name);
 
 name[0]=toupper(name[0]);
 
@@ -2829,6 +2990,10 @@ name[0]=toupper(name[0]);
 for(u=user_first;u!=NULL;u=u->next) {
 	if (u->login || u->type==CLONE_TYPE) continue;
 	if (!strcmp(u->name,name))  return u;
+	for (i=0;i<MAX_USER_ALIAS;++i) {
+		if (u->alias[i][0]=='\0') break;
+		if (!(strcmp(u->alias[i],namelow))) return u;
+		}
 	}
 
 /* Search for close match name */
@@ -2836,6 +3001,8 @@ for(u=user_first;u!=NULL;u=u->next) {
 	if (u->login || u->type==CLONE_TYPE) continue;
 	if (strstr(u->name,name))  return u;
 	}
+
+
 return NULL;
 }
 
@@ -3280,6 +3447,7 @@ user->malloc_end=NULL;
 user->owner=NULL;
 for(i=0;i<REVTELL_LINES;++i) user->revbuff[i][0]='\0';
 for(i=0;i<MAX_USER_CHANNEL;++i) user->channel[i]=NULL;
+for(i=0;i<MAX_USER_ALIAS;++i) user->alias[i][0]='\0';
 return user;
 }
 
@@ -3772,6 +3940,12 @@ if (u->level<minlogin_level) {
 	return;
 	}
 strcpy(u->site,nl->service);
+u->room=NULL;
+/* perche' se l'utente ha stanza, quando la funzione write_room cerca
+di scrivere, scrive anche per lui, ma dato che ancora non gli e' stato
+attribuito un ->netlink, nella funzione write_user il riferimento ai
+numeri di versionee' deallocato e va in seg fault ... 4 ore di bestemmie */
+
 sprintf(text,"%s enters from cyberspace.\n",u->name);
 write_room(nl->connect_room,text);
 sprintf(text,"NETLINK: Remote user %s received from %s.\n",u->name,nl->service);
@@ -4128,17 +4302,28 @@ char *to,*from;
 {
 FILE *fp;
 char filename[80];
+UR_OBJECT u;
 
-sprintf(filename,"%s/%s.D",USERFILES,to);
-if (!(fp=fopen(filename,"r"))) {
+if ((u=create_user())==NULL) {
+        write_syslog("ERROR: Unable to create temporary user object in nl_checkexists()\n",1,TOSYS);
+	return;
+        }
+
+
+strcpy(u->name,to);
+if (!(load_user_details(u))) {
 	sprintf(text,"EXISTS_NO %s %s\n",to,from);
 	write_sock(nl->socket,text);
-	return;
 	}
-fclose(fp);
-sprintf(text,"EXISTS_YES %s %s\n",to,from);
-write_sock(nl->socket,text);
-}
+else {
+	sprintf(text,"EXISTS_YES %s %s\n",to,from);
+	write_sock(nl->socket,text);
+	}
+
+destruct_user(u);
+destructed=0;
+return;
+}         /* changed */
 
 
 /*** Remote user doesnt exist ***/
@@ -4632,6 +4817,9 @@ switch(com_num) {
 	case MACRO    : macro(user); break;
 	case SEE      :
 	case SEND     : send_banner(user); break;
+	case SET      : set_opt(user,inpstr); break;
+	case UNSET    : unset_opt(user,inpstr); break;
+	case IGNBANNER: toggle_ignbanner(user); break;
 	default: write_user(user,"Command not executed in exec_com().\n");
 	}	
 }
@@ -4960,6 +5148,11 @@ if (ban_swearing && contains_swearing(inpstr)) {
 
 if (word[1][0]==';') {
 	inpstr=remove_first(inpstr);
+	if (inpstr[0]=='\0') {
+		sprintf(text,"emote in channel %s what?\n",channel->long_name);
+		write_user(user,text);
+		return;
+		} 
 	if (user->vis) name=user->name; else name=invisname;
 	sprintf(text,"[Canale ~OL%s~RS] %s %s\n",channel->long_name,name,inpstr);
 	write_to_listener_users(text,channel);
@@ -4968,6 +5161,11 @@ if (word[1][0]==';') {
 	}
 
 if (word[1][0]=='+') {
+	if (word_count<4) {
+		sprintf(text,"Shout in channel %s what?\n",channel->long_name);
+		write_user(user,text);
+		return;
+		}
 	if (!(u=get_user(word[2]))) {
 		write_user(user,notloggedon);  return;
 		}
@@ -6341,7 +6539,7 @@ UR_OBJECT user;
 char *inpstr;
 int done_editing;
 {
-UR_OBJECT u;
+UR_OBJECT u,u2;
 FILE *fp;
 int remote,has_account;
 char *c,filename[80];
@@ -6376,13 +6574,25 @@ word[1][0]=toupper(word[1][0]);
 if (!remote) {
 	u=NULL;
 	if (!(u=get_user(word[1]))) {
-		sprintf(filename,"%s/%s.D",USERFILES,word[1]);
-		if (!(fp=fopen(filename,"r"))) {
-			write_user(user,nosuchuser);  return;
+		if ((u2=create_user())==NULL) {
+			sprintf(text,"%s: unable to create temporary user object.\n",syserror);
+			write_user(user,text);
+		        write_syslog("ERROR: Unable to create temporary user object in smail()\n",1,TOSYS);
+			return;
+	       		}
+
+		strcpy(u2->name,word[1]);
+		if (!load_user_details(u2)) {
+			write_user(user,nosuchuser);
+			destruct_user(u2);
+			destructed=0;
+			return;
 			}
 		has_account=1;
-		fclose(fp);
+		destruct_user(u2);
+		destructed=0;
 		}
+
 	if (u==user) {
 		write_user(user,"Trying to mail yourself is the fifth sign of madness.\n");
 		return;
@@ -6390,15 +6600,27 @@ if (!remote) {
 	if (u!=NULL) strcpy(word[1],u->name); 
 	if (!has_account) {
 		/* See if user has local account */
-		sprintf(filename,"%s/%s.D",USERFILES,word[1]);
-		if (!(fp=fopen(filename,"r"))) {
+
+		if ((u2=create_user())==NULL) {
+			sprintf(text,"%s: unable to create temporary user object.\n",syserror);
+			write_user(user,text);
+		        write_syslog("ERROR: Unable to create temporary user object in smail()\n",1,TOSYS);
+			return;
+	       		}
+
+		strcpy(u2->name,word[1]);
+		if (!load_user_details(u2)) {
 			sprintf(text,"%s is a remote user and does not have a local account.\n",u->name);
 			write_user(user,text);  
+			destruct_user(u2);
+			destructed=0;
 			return;
 			}
-		fclose(fp);
+		destruct_user(u2);
+		destructed=0;
 		}
-	}
+	}             /* changed */
+
 if (word_count>2) {
 	/* One line mail */
 	strcat(inpstr,"\n"); 
@@ -6559,6 +6781,7 @@ char filename[80],line[82];
 int new_mail,days,hours,mins,timelen,days2,hours2,mins2,idle;
 char last_email[80],email_date[10],name[USER_NAME_LEN+1];
 char vlast_email[80],vemail_date[10];
+int i;
 
 vlast_email[0]='\0';
 vemail_date[0]='\0';
@@ -6596,6 +6819,7 @@ else {
 		}
 	fclose(fp);
 	}
+write_user(user,"-----------------------------------------------------\n");
 sprintf(filename,"%s/%s.M",USERFILES,u->name);
 if (!(fp=fopen(filename,"r"))) new_mail=0;
 else {
@@ -6650,7 +6874,20 @@ if (u2==NULL) {
 		sprintf(text,"%s has unread mail.\n",u->name);
 		write_user(user,text);
 		}
-	write_user(user,"\n");
+	write_user(user,"-----------------------------------------------------\n");
+	sprintf(text,"%s has alias : ",u->name);
+	for (i=0;i<MAX_USER_ALIAS;++i) {
+		if (u->alias[i][0]=='\0') break;
+		if (i!=0) strcat(text,",");
+		strcat(text,u->alias[i]);
+		}
+	strcat(text,"\n");
+	if (i!=0) write_user(user,text);
+	else {
+		sprintf(text,"%s has no aliases\n",u->name);
+		write_user(user,text);
+		}
+	write_user(user,"-----------------------------------------------------\n\n");
 	destruct_user(u);
 	destructed=0;
 	return;
@@ -6715,7 +6952,22 @@ if (new_mail>u->read_mail) {
 	sprintf(text,"%s has unread mail.\n",u->name);
 	write_user(user,text);
 	}
-write_user(user,"\n");
+
+write_user(user,"-----------------------------------------------------\n");
+sprintf(text,"%s has alias : ",u->name);
+for (i=0;i<MAX_USER_ALIAS;++i) {
+	if (u->alias[i][0]=='\0') break;
+	if (i!=0) strcat(text,",");
+	strcat(text,u->alias[i]);
+	}
+strcat(text,"\n");
+if (i!=0) write_user(user,text);
+else {
+	sprintf(text,"%s has no aliases\n",u->name);
+	write_user(user,text);
+	}
+write_user(user,"-----------------------------------------------------\n\n");
+
 }
 
 
@@ -8657,8 +8909,6 @@ if (this_user) {
 	sprintf(text,"%s SUICIDED.\n",name);
 	write_syslog(text,1,TOSYS);
 	disconnect_user(user);
-	sprintf(filename,"%s/%s.D",USERFILES,name);
-	unlink(filename);
 	sprintf(filename,"%s/%s.M",USERFILES,name);
 	unlink(filename);
 	sprintf(filename,"%s/%s.P",USERFILES,name);
@@ -8666,6 +8916,7 @@ if (this_user) {
 	sprintf(filename,"%s/%s.L",USERFILES,name);
 	unlink(filename);	
 	remove_from_user_list(name);
+	remove_from_user_file(name);
 	return;
 	}
 if (word_count<2) {
@@ -8702,8 +8953,6 @@ if (u->level>=user->level) {
 	}
 destruct_user(u);
 destructed=0;
-sprintf(filename,"%s/%s.D",USERFILES,word[1]);
-unlink(filename);
 sprintf(filename,"%s/%s.M",USERFILES,word[1]);
 unlink(filename);
 sprintf(filename,"%s/%s.P",USERFILES,word[1]);
@@ -8712,6 +8961,7 @@ sprintf(filename,"%s/%s.L",USERFILES,word[1]);
 unlink(filename);	
 
 remove_from_user_list(word[1]);
+remove_from_user_file(word[1]);
 sprintf(text,"\07~FR~OL~LIUser %s deleted!\n",word[1]);
 write_user(user,text);
 sprintf(text,"%s DELETED %s.\n",user->name,word[1]);
@@ -9726,8 +9976,6 @@ write_user(user,"~OL~FGRitorni normale\n");
 sprintf(text,"~OL~FG%s ha compiuto la sua missione...\n",user->name);
 write_room_except(rm,text,user);
 
-sprintf(filename,"%s/%s.D",USERFILES,vicname);
-unlink(filename);
 sprintf(filename,"%s/%s.M",USERFILES,vicname);
 unlink(filename);
 sprintf(filename,"%s/%s.P",USERFILES,vicname);
@@ -9736,7 +9984,7 @@ sprintf(filename,"%s/%s.L",USERFILES,vicname);
 unlink(filename);	
 
 remove_from_user_list(vicname);
-
+remove_from_user_file(vicname);
 }
 
 undo(user)
@@ -10228,6 +10476,11 @@ if (!flag) {
 		return;
 		}
 
+	if (u->ignbanner) {
+		write_user(user,"He is ignoring banners at the moment...\n");
+		return;
+		}
+
 	if (u->afk) {
 		write_user(user,"He is afk at the moment...\n");
 		return;
@@ -10259,14 +10512,15 @@ if (!flag) {
 	}
 else {
 	for (u=user_first;u!=NULL;u=u->next) {
-		if (u==user || u->ignall || u->afk || u->room==NULL ||
+		if (u==user || u->ignall || u->ignbanner 
+		    || u->afk || u->room==NULL ||
                    (flag==2 && u->room!=user->room)) continue;
 		fgets(line,120,fp);
 		while (!feof(fp)) {
 			write_user(u,line);
 			fgets(line,120,fp);
 			}
-		sprintf(text,"~FM************* From %s to All *************\n",user->name);
+		sprintf(text,"~FW************* ~FGFrom %s to All~FW *************\n",user->name);
 		write_user(u,text);
 		fseek(fp,0,0);
 		}
@@ -10277,20 +10531,168 @@ write_user(user,"Banner sent...\n");
 }
 
 
+set_opt(user,inpstr)
+UR_OBJECT user;
+char *inpstr;
+{
+
+if (word_count<2) {
+	write_user(user,"Usage: .set <option> <option data>\n");
+	return;
+	}
+
+if (!(strncmp(word[1],"alias",strlen(word[1])))) {
+	inpstr=remove_first(inpstr);
+	if (inpstr[0]=='\0') {
+		write_user(user,"specify your new alias, please\n");
+		return;
+		}
+	set_alias(user,inpstr);
+	return;
+	}
+
+write_user(user,"Invalid option\n");
+}
 
 
+unset_opt(user,inpstr)
+UR_OBJECT user;
+char *inpstr;
+{
+
+if (word_count<2) {
+	write_user(user,"Usage: .unset <option> <option data>\n");
+	return;
+	}
+
+if (!(strncmp(word[1],"alias",strlen(word[1])))) {
+	inpstr=remove_first(inpstr);
+	if (inpstr[0]=='\0') {
+		write_user(user,"specify your alias, please\n");
+		return;
+		}
+	unset_alias(user,inpstr);
+	return;
+	}
+
+write_user(user,"Invalid option\n");
+}
+
+set_alias(user,inpstr)
+UR_OBJECT user;
+char *inpstr;
+{
+int i;
+FILE *fp;
+char filename[80];
+char line[120],keyword[20],word[100],name[USER_NAME_LEN+1];
+char inpstrhi[USER_NAME_LEN+1];
+
+if (strlen(inpstr)<3) {
+	write_user(user,"Alias too short\n");
+	return;
+	}
+
+if (strlen(inpstr)>USER_NAME_LEN) {
+	write_user(user,"Alias too long\n");
+	return;
+	}
+
+strcpy(inpstrhi,inpstr);
+inpstrhi[0]=toupper(inpstrhi[0]);
+
+for (i=0;i<MAX_USER_ALIAS;++i) {
+	if (!(strcmp(user->alias[i],inpstr))) {
+		write_user(user,"You have already this alias\n");
+		return;
+		}
+	if (user->alias[i][0]=='\0') break;
+	}
+
+if (i==MAX_USER_ALIAS) {
+	sprintf(text,"You have already %d aliases...\n",MAX_USER_ALIAS);
+	write_user(user,text);
+	return;
+	}
 
 
+sprintf(filename,"%s/%s",DATAFILES,USERDATA);
+
+if (!(fp=fopen(filename,"r"))) {
+	write_user(user,"~OLERROR:~RS can't open user data file\n");
+	write_syslog("ERROR: can't open user data file in set_alias()\n");
+	return;
+	}
+
+fgets(line,82,fp);
+
+while (!(feof(fp))) {
+	sscanf(line,"%s %s",keyword,word);
+	if (!(strcmp(keyword,"NAME"))) {
+		if (!(strcmp(word,inpstrhi))) {
+			write_user(user,"Sorry, this alias is the name of a user\n");
+			fclose(fp);
+			return;
+			}
+		if (!(strncmp(word,inpstrhi,strlen(inpstrhi)))) {
+			sprintf(text,"Sorry, this alias is the abbreviated name of the user %s\n",word);
+			write_user(user,text);
+			fclose(fp);
+			return;
+			}
+		strcpy(name,word);
+		}
+
+	if (!(strcmp(keyword,"ALIAS"))) {
+		if (!(strcmp(word,inpstr))) {
+			sprintf(text,"Sorry, this alias is already used by the user %s\n",name);
+			write_user(user,text);
+			fclose(fp);
+			return;
+			}
+		}
+	fgets(line,82,fp);
+	}
+
+fclose(fp);
+
+strcpy(user->alias[i],inpstr);
+sprintf(text,"New alias %s stored\n",user->alias[i]);
+write_user(user,text);
+}
 
 
+unset_alias(user,inpstr)
+UR_OBJECT user;
+char *inpstr;
+{
+int i,j=0;
 
+for(i=0;i<MAX_USER_ALIAS;++i) {
+	if (!(strcmp(user->alias[i],inpstr))) {
+		for (j=i;j<MAX_USER_ALIAS-1;++j) strcpy(user->alias[j],user->alias[j+1]);
+		user->alias[MAX_USER_ALIAS-1][0]='\0';
+		sprintf(text,"Alias %s unsetted\n");
+		write_user(user,text);
+		}
+	}
 
+if (!j) write_user(user,"You don't have this alias\n");
 
+}
 
-
-
-
-
+/*** Switch ignoring all on and off ***/
+toggle_ignbanner(user)
+UR_OBJECT user;
+{
+if (!user->ignbanner) {
+	write_user(user,"You are now ignoring banners.\n");
+	user->ignbanner=1;
+	return;
+	}
+write_user(user,"Now you can receive banners again.\n");
+user->ignbanner=0;
+}
 
 
 
