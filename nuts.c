@@ -5336,9 +5336,11 @@ char line[USER_NAME_LEN+USER_DESC_LEN*2];
 char rname[ROOM_NAME_LEN+1],portstr[5],idlestr[6],sockstr[3];
 
 total=0;  invis=0;  remote=0;  logins=0;
-if (user->login) sprintf(text,"\n*** Current users %s ***\n\n",long_date(1));
-else sprintf(text,"\n~BB*** Current users %s ***~RS\n\n",long_date(1));
+if (user->login) sprintf(text,"\n    *** Current users %s ***\n",long_date(1));
+else sprintf(text,"\n    ~BB*** Current users %s ***~RS\n",long_date(1));
 write_user(user,text);
+if (!people)
+write_user(user,"+------------------------------------------+------------------------------+\n");
 if (people) write_user(user,"~FTName            : Level Line Ignall Visi Idle Mins  Port  Site/Service\n\n\r");
 for(u=user_first;u!=NULL;u=u->next) {
 	if (u->type==CLONE_TYPE) continue;
@@ -5379,10 +5381,12 @@ for(u=user_first;u!=NULL;u=u->next) {
 	delump(rname);
 	/* Count number of colour coms to be taken account of when formatting */
 	cnt=colour_com_count(line);
-	sprintf(text,"%-*s : %-4s : %-12s : %d mins.",40+cnt*3,line,level_name[u->path][u->level],rname,mins);
-	if (u->afk) strcat(text,"~BR(AFK)\n"); else strcat(text,"\n");
+	sprintf(text,"| %-*s | %-28s |",40+cnt*3,line,rname);
+	if (u->afk) text[1]='!';
+	strcat(text,"\n");
 	write_user(user,text);
 	}
+write_user(user,"+------------------------------------------+------------------------------+\n");
 sprintf(text,"\nThere are %d visible, %d invisible, %d remote users.\nTotal of %d users",num_of_users-invis,invis,remote,total);
 if (people) sprintf(text,"%s and %d logins.\n\n",text,logins);
 else strcat(text,".\n\n");
