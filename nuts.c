@@ -7336,18 +7336,41 @@ FILE *fp;
 char filename[80],filename2[80],p[20],name[USER_NAME_LEN+1];
 int a,b,c,d,level;
 
-write_user(user,"Ban temporaneamente disabilitato\n");
-return;
+sprintf(filename,"%s/%s",DATAFILES,USERBAN);
+
+if ((u=get_user(word[2]))!=NULL) { /* loggato */
+
+	if (u==user) {
+	        write_user(user,"Trying to ban yourself is the seventh sign of madness.\n");
+		return;
+	        }
 
 
-word[2][0]=toupper(word[2][0]);
-if (!strcmp(user->name,word[2])) {
-	write_user(user,"Trying to ban yourself is the seventh sign of madness.\n");
+        if (u->level>=user->level) {
+                write_user(user,"You cannot ban a user of equal or higher level than yourself.\n");
+		return;
+                }
+
+	if (!(fp=fopen(filename,"a"))) {
+		sprintf(text,"%s: Can't open file to append.\n",syserror);
+		write_user(user,text);
+		write_syslog("ERROR: Couldn't open file to append in ban_user().\n",0,TOSYS);
+		return;
+        	}
+
+	fprintf(fp,"%s\n",u->name);
+	fclose(fp);
+	write_user(user,"User banned.\n");
+	sprintf(text,"%s BANNED user %s.\n",user->name,u->name);
+	write_syslog(text,1,TOSYS);
+        write_user(u,"\n\07~FR~OL~LIYou have been banned from here!\n\n");
+        disconnect_user(u);
 	return;
 	}
 
-/* See if ban already set for given user */
-sprintf(filename,"%s/%s",DATAFILES,USERBAN);
+
+/* see if user is not already banned */
+
 if (fp=fopen(filename,"r")) {
 	fscanf(fp,"%s",name);
 	while(!feof(fp)) {
@@ -7360,43 +7383,44 @@ if (fp=fopen(filename,"r")) {
 	fclose(fp);
 	}
 
-/* See if already on */
-if ((u=get_user(word[2]))!=NULL) {
-	if (u->level>=user->level) {
-		write_user(user,"You cannot ban a user of equal or higher level than yourself.\n");
-		return;
-		}
-	}
-else {
-	/* User not on so load up his data */
-	sprintf(filename2,"%s/%s.D",USERFILES,word[2]);
-	if (!(fp=fopen(filename2,"r"))) {
-		write_user(user,nosuchuser);  return;
-		}
-	fscanf(fp,"%s\n%d %d %d %d %d",p,&a,&b,&c,&d,&level);
-	fclose(fp);
-	if (level>=user->level) {
-		write_user(user,"You cannot ban a user of equal or higher level than yourself.\n");
-		return;
-		}
-	}
+if ((u=create_user())==NULL) {
+	sprintf(text,"%s: unable to create temporary user object.\n",syserror);
+	write_user(user,text);
+	write_syslog("ERROR: Unable to create temporary user object in ban_user()\n");
+	return;
+       	}
 
-/* Write new ban to file */
+strcpy(u->name,word[2]);
+	
+if (!load_user_details(u)) {
+	write_user(user,nosuchuser);
+	destruct_user(u);
+	destructed=0;
+	return;
+	}
+	
+if (u->level>=user->level) {
+	write_user(user,"You cannot ban a user of a level higher or equal than your own.\n");
+	destruct_user(u);
+	destructed=0;
+	return;
+        }
+	
 if (!(fp=fopen(filename,"a"))) {
 	sprintf(text,"%s: Can't open file to append.\n",syserror);
 	write_user(user,text);
 	write_syslog("ERROR: Couldn't open file to append in ban_user().\n",0,TOSYS);
 	return;
 	}
-fprintf(fp,"%s\n",word[2]);
+
+fprintf(fp,"%s\n",u->name);
 fclose(fp);
+
 write_user(user,"User banned.\n");
-sprintf(text,"%s BANNED user %s.\n",user->name,word[2]);
+sprintf(text,"%s BANNED user %s.\n",user->name,u->name);
 write_syslog(text,1,TOSYS);
-if (u!=NULL) {
-	write_user(u,"\n\07~FR~OL~LIYou have been banned from here!\n\n");
-	disconnect_user(u);
-	}
+destruct_user(u);
+destructed=0;
 }
 
 	
