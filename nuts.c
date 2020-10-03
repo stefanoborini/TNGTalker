@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts428.h"
+#include "nuts429.h"
 
 #define VERSION "3.3.3"
 
@@ -1898,7 +1898,7 @@ user->login=4;
 user->pass[0]='\0';
 for (i=0;i<MAX_USER_CHANNEL;++i) user->channel[i]=NULL;
 for (i=0;i<MAX_USER_ALIAS;++i) user->alias[i][0]='\0';
-user->room=room_first;
+user->temp_room=room_first;
 write_user(user,"Give me a name: ");
 echo_on(user);
 }
@@ -1910,7 +1910,7 @@ load_user_details(user)
 UR_OBJECT user;
 {
 FILE *fp;
-RM_OBJECT get_room();
+RM_OBJECT room,get_room();
 char *remove_first();
 char line[120],filename[80],last_name[USER_NAME_LEN+1];
 int temp1,temp2,temp3,kw_code,i;
@@ -2003,9 +2003,9 @@ while (!feof(fp)) {
 		case 8: /* room */
 			if (!got_it) break;
 			sscanf(line,"%*s %s",temp);
-			if ((user->room=get_room(temp,NULL))==NULL ||
-				user->room->access==PRIVATE)
-				user->room=room_first;
+			if ((user->temp_room=get_room(temp,NULL))==NULL ||
+				user->temp_room->access==PRIVATE)
+				user->temp_room=room_first;
 			break;
 
 		case 9: /* alias */
@@ -2209,7 +2209,11 @@ if (user->last_site[0]) {
 	}
 else sprintf(text,"Welcome %s...\n\n",user->name);
 write_user(user,text);
-if (user->room==NULL) user->room=room_first;
+if (user->temp_room==NULL) user->room=room_first;
+else {
+	user->room=user->temp_room;
+	user->temp_room=NULL;
+	}
 user->last_login=time(0); /* set to now */
 sprintf(text,"~FTYour level is:~RS~OL %s\n",level_name[user->path][user->level]);
 write_user(user,text);
@@ -6569,7 +6573,7 @@ while(*c) {
 		}
 	++c;
 	}
-word[1][0]=toupper(word[1][0]);
+
 /* See if user exists */
 if (!remote) {
 	u=NULL;
@@ -6589,10 +6593,10 @@ if (!remote) {
 			return;
 			}
 		has_account=1;
+		strcpy(word[1],u2->name);
 		destruct_user(u2);
 		destructed=0;
 		}
-
 	if (u==user) {
 		write_user(user,"Trying to mail yourself is the fifth sign of madness.\n");
 		return;
@@ -6600,7 +6604,6 @@ if (!remote) {
 	if (u!=NULL) strcpy(word[1],u->name); 
 	if (!has_account) {
 		/* See if user has local account */
-
 		if ((u2=create_user())==NULL) {
 			sprintf(text,"%s: unable to create temporary user object.\n",syserror);
 			write_user(user,text);
@@ -6616,6 +6619,7 @@ if (!remote) {
 			destructed=0;
 			return;
 			}
+		strcpy(word[1],u2->name);
 		destruct_user(u2);
 		destructed=0;
 		}
@@ -10672,7 +10676,7 @@ for(i=0;i<MAX_USER_ALIAS;++i) {
 	if (!(strcmp(user->alias[i],inpstr))) {
 		for (j=i;j<MAX_USER_ALIAS-1;++j) strcpy(user->alias[j],user->alias[j+1]);
 		user->alias[MAX_USER_ALIAS-1][0]='\0';
-		sprintf(text,"Alias %s unsetted\n");
+		sprintf(text,"Alias %s unsetted\n",inpstr);
 		write_user(user,text);
 		}
 	}
