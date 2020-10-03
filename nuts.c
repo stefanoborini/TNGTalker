@@ -1073,7 +1073,6 @@ fgets(line,82,fp);
 while (!feof(fp)) {
 	line_num++;
 	sscanf(line,"%s",kw);
-	printf("%s\n",kw);
 	kw_code=0;
 	while(keyword[kw_code][0]!='*') {
 		if (!strcmp(keyword[kw_code],kw))  break;
@@ -1188,13 +1187,13 @@ while (!feof(fp)) {
 		if (channel->long_name[0]=='\0') 
 			strcpy(channel->long_name,channel->name);
 		if (channel->phrase[0]=='\0') 
-			strcpy(channel->phrase,"[canale %3] %1 dice: ");
+			strcpy(channel->phrase,"[canale ~OL%3~RS] %1 dice: ");
 		if (channel->phraseto[0]=='\0') 
-			strcpy(channel->phraseto,"[canale %3] %1 dice a %2: ");
+			strcpy(channel->phraseto,"[canale ~OL%3~RS] %1 dice a %2: ");
 		if (channel->join[0]=='\0') 
-			strcpy(channel->join,"[canale %3] %1 joina il canale");
+			strcpy(channel->join,"[canale ~OL%3~RS] %1 joina il canale");
 		if (channel->unjoin[0]=='\0') 
-			strcpy(channel->unjoin,"[canale %3] %1 lascia il canale");
+			strcpy(channel->unjoin,"[canale ~OL%3~RS] %1 lascia il canale");
 		name_flag=0;
 		printf("channel %s created\n",channel->name);
 		break;
@@ -1873,7 +1872,6 @@ switch(user->login) {
 	user->last_login=time(0);
 	user->total_login=0;
 	user->last_login_len=0;
-
 	save_user_details(user,1);
 	sprintf(text,"New user \"%s\" created.\n",user->name);
 	write_syslog(text,1,TOSYS);
@@ -1889,6 +1887,8 @@ switch(user->login) {
 attempts(user)
 UR_OBJECT user;
 {
+int i;
+
 user->attempts++;
 if (user->attempts==3) {
 	write_user(user,"\nMaximum attempts reached.\n\n");
@@ -1896,6 +1896,8 @@ if (user->attempts==3) {
 	}
 user->login=4;
 user->pass[0]='\0';
+for (i=0;i<MAX_USER_CHANNEL;++i) user->channel[i]=NULL;
+user->room=NULL;
 write_user(user,"Give me a name: ");
 echo_on(user);
 }
@@ -1907,13 +1909,14 @@ load_user_details(user)
 UR_OBJECT user;
 {
 FILE *fp;
+RM_OBJECT get_room();
 char *remove_first();
 char line[120],filename[80];
 int temp1,temp2,temp3,kw_code,i;
 char kw[20],*pun,temp[120];
 CH_OBJECT ch;
 char *keyword[]={
-"NAME","PASS","DATA","SITE","DESC","INPHR","OUTPHR","CHAN","*"
+"NAME","PASS","DATA","SITE","DESC","INPHR","OUTPHR","CHAN","ROOM","*"
 };
 
 sprintf(filename,"%s/%s.D",USERFILES,user->name);
@@ -1968,7 +1971,15 @@ while (!feof(fp)) {
 					}
 				}
 			break;
-			
+		
+		case 8: /* room */
+			sscanf(line,"%*s %s",temp);
+			if ((user->room=get_room(temp,NULL))==NULL)
+				user->room=room_first;
+			else if (user->room->access==PRIVATE)
+				user->room=room_first;
+			break;
+
 		}
 	fgets(line,82,fp);
 	}
@@ -2012,6 +2023,7 @@ for(i=0;i<MAX_USER_CHANNEL;++i) {
 	if (user->channel[i]==NULL) break;
 	fprintf(fp,"CHAN %s\n",user->channel[i]->name);
 	}
+fprintf(fp,"ROOM %s\n",user->room->name);
 fclose(fp);
 return 1;
 }
@@ -2086,7 +2098,7 @@ if (user->last_site[0]) {
 	}
 else sprintf(text,"Welcome %s...\n\n",user->name);
 write_user(user,text);
-user->room=room_first;
+if (user->room==NULL) user->room=room_first;
 user->last_login=time(0); /* set to now */
 sprintf(text,"~FTYour level is:~RS~OL %s\n",level_name[user->path][user->level]);
 write_user(user,text);
@@ -2846,6 +2858,8 @@ for (rm=room_first;rm!=NULL;rm=rm->next) {
         strtolower(tvar1);
         if (!strcmp(tvar1,tvar2)) return rm;
 }
+
+if (user==NULL) return NULL;
 
 for (cnt=0;cnt<MAX_LINKS;++cnt) {
 	if (user->room->link[cnt]==NULL) continue;
@@ -4947,7 +4961,7 @@ if (ban_swearing && contains_swearing(inpstr)) {
 if (word[1][0]==';') {
 	inpstr=remove_first(inpstr);
 	if (user->vis) name=user->name; else name=invisname;
-	sprintf(text,"[Canale %s] %s %s\n",channel->long_name,name,inpstr);
+	sprintf(text,"[Canale ~OL%s~RS] %s %s\n",channel->long_name,name,inpstr);
 	write_to_listener_users(text,channel);
 	record_shout(text,channel);
 	return;
