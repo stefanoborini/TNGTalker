@@ -3107,9 +3107,10 @@ return 0;
 
 
 /*** This is function that sends mail to other users ***/
-send_mail(user,to,ptr)
+send_mail(user,to,ptr,verbose)
 UR_OBJECT user;
 char *to,*ptr;
+int verbose;
 {
 NL_OBJECT nl;
 FILE *infp,*outfp;
@@ -3166,7 +3167,7 @@ fputs(ptr,outfp);
 fputs("\n",outfp);
 fclose(outfp);
 rename("tempfile",filename);
-write_user(user,"Mail sent.\n");
+if (verbose) write_user(user,"Mail sent.\n");
 write_user(get_user(to),"\07~FT~OL~LI** YOU HAVE NEW MAIL **\n");
 }
 
@@ -4308,7 +4309,7 @@ if ((user=get_user(from))!=NULL) {
 	}
 else {
 	sprintf(text2,"There is no user named %s at %s, your mail bounced.\n",to,nl->service);
-	send_mail(NULL,from,text2);
+	send_mail(NULL,from,text2,1);
 	}
 sprintf(filename,"%s/OUT_%s_%s@%s",MAILSPOOL,from,to,nl->service);
 unlink(filename);
@@ -4332,7 +4333,7 @@ if (!(fp=fopen(filename,"r"))) {
 		}
 	else {
 		sprintf(text2,"An error occured during mail delivery to %s@%s.\n",to,nl->service);
-		send_mail(NULL,from,text2);
+		send_mail(NULL,from,text2,1);
 		}
 	return;
 	}
@@ -4437,7 +4438,7 @@ if ((user=get_user(from))!=NULL) {
 	}
 else {
 	sprintf(text,"An error occured during mail delivery to %s@%s.\n",to,nl->service);
-	send_mail(NULL,from,text);
+	send_mail(NULL,from,text,1);
 	}
 }
 
@@ -6509,20 +6510,46 @@ int done_editing;
 {
 UR_OBJECT u,u2;
 FILE *fp;
-int remote,has_account;
+int remote,has_account,all=0;
 char *c,filename[80];
+char wd1[20],wd2[120];
+char line[120];
 
 if (user->muzzled) {
 	write_user(user,"You are muzzled, you cannot mail anyone.\n");  return;
 	}
 if (done_editing) {
-	send_mail(user,user->mail_to,user->malloc_start);
+	if (!(strcmp(user->mail_to,"all"))) {
+		sprintf(filename,"%s/%s",DATAFILES,USERDATA);
+		if (!(fp=fopen(filename,"r"))) {
+			write_user(user,"ERROR: unable to open userdata file in send mail to all\n");
+			write_syslog("ERROR: unable to open userdata file in send mail to all\n",1,TOSYS);
+			return;
+			}
+		fgets(line,82,fp);
+		while (!feof(fp)) {
+			sscanf(line,"%s %s",wd1,wd2);
+			if (!(strcmp(wd1,"NAME"))) {
+				send_mail(user,wd2,user->malloc_start,0);
+				fgets(line,82,fp);
+				continue;
+				}
+			fgets(line,82,fp);
+			}
+		fclose(fp);
+		user->mail_to[0]='\0';
+		return;
+		}
+	send_mail(user,user->mail_to,user->malloc_start,1);
 	user->mail_to[0]='\0';
 	return;
 	}
 if (word_count<2) {
 	write_user(user,"Smail who?\n");  return;
 	}
+
+if (!(strcmp(word[1],"all")) && user->level>ADVANCED) all=1;
+
 /* See if its to another site */
 remote=0;
 has_account=0;
@@ -6539,7 +6566,7 @@ while(*c) {
 	}
 
 /* See if user exists */
-if (!remote) {
+if (!remote && !all) {
 	u=NULL;
 	if (!(u=get_user(word[1]))) {
 		if ((u2=create_user())==NULL) {
@@ -6591,8 +6618,28 @@ if (!remote) {
 
 if (word_count>2) {
 	/* One line mail */
-	strcat(inpstr,"\n"); 
-	send_mail(user,word[1],remove_first(inpstr));
+	strcat(inpstr,"\n");
+	if (all) {
+		sprintf(filename,"%s/%s",DATAFILES,USERDATA);
+		if (!(fp=fopen(filename,"r"))) {
+			write_user(user,"ERROR: unable to open userdata file in send mail to all\n");
+			write_syslog("ERROR: unable to open userdata file in send mail to all\n",1,TOSYS);
+			return;
+			}
+		fgets(line,82,fp);
+		while (!feof(fp)) {
+			sscanf(line,"%s %s",wd1,wd2);
+			if (!(strcmp(wd1,"NAME"))) {
+				send_mail(user,wd2,remove_first(inpstr),0);
+				fgets(line,82,fp);
+				continue;
+				}
+			fgets(line,82,fp);
+			}
+		fclose(fp);
+		return;
+		}
+	send_mail(user,word[1],remove_first(inpstr),1);
 	return;
 	}
 if (user->type==REMOTE_TYPE) {
@@ -6616,7 +6663,7 @@ dmail(user)
 UR_OBJECT user;
 {
 FILE *infp,*outfp;
-int num,valid,cnt;
+int num,valid,cnt,deleted=0;
 char filename[80],w1[ARR_SIZE],line[ARR_SIZE];
 
 if (word_count<2 || ((num=atoi(word[1]))<1 && strcmp(word[1],"all"))) {
@@ -6626,12 +6673,14 @@ sprintf(filename,"%s/%s.M",USERFILES,user->name);
 if (!(infp=fopen(filename,"r"))) {
 	write_user(user,"You have no mail to delete.\n");  return;
 	}
+
 if (!strcmp(word[1],"all")) {
 	fclose(infp);
 	unlink(filename);
 	write_user(user,"All mail deleted.\n");
 	return;
 	}
+
 if (!(outfp=fopen("tempfile","w"))) {
 	sprintf(text,"%s: couldn't open tempfile.\n",syserror);
 	write_user(user,text);
@@ -6639,42 +6688,49 @@ if (!(outfp=fopen("tempfile","w"))) {
 	fclose(infp);
 	return;
 	}
+
 fprintf(outfp,"%d\r",(int)time(0));
 user->read_mail=time(0);
 cnt=0;  valid=1;
 fgets(line,DNL,infp); /* Get header date */
 fgets(line,ARR_SIZE-1,infp);
-while(!feof(infp)) {
-	if (cnt<=num) {
-		if (*line=='\n') valid=1;
-		sscanf(line,"%s",w1);
-		if (valid && (!strcmp(w1,"~OLFrom:") || !strcmp(w1,"From:"))) {
-			if (++cnt>num) fputs(line,outfp);
-			valid=0;
-			}
+while(!feof(infp)) {	
+	if (*line=='\n') valid=1;
+	sscanf(line,"%s",w1);
+	if (valid && (!strcmp(w1,"~OLFrom:") || !strcmp(w1,"From:"))) {
+		cnt++;
+		valid=0;
 		}
-	else fputs(line,outfp);
+	if (cnt==num) {
+		fgets(line,ARR_SIZE-1,infp);
+		deleted=1;
+		continue;
+		}
+	fputs(line,outfp);
 	fgets(line,ARR_SIZE-1,infp);
 	}
+
 fclose(infp);
 fclose(outfp);
-unlink(filename);
-if (cnt<num) {
+if (deleted && cnt==1) {
 	unlink("tempfile");
-	sprintf(text,"There were only %d messages in your mailbox, all now deleted.\n",cnt);
+	unlink(filename);
+	write_user(user,"All mail deleted.\n");
+	return;
+	}
+
+if (!deleted) {
+	sprintf(text,"You have only %d messages in your mailbox\n",cnt);
 	write_user(user,text);
 	return;
 	}
-if (cnt==num) {
-	unlink("tempfile"); /* cos it'll be empty anyway */
-	write_user(user,"All messages deleted.\n");
-	user->room->mesg_cnt=0;
-	}
-else {
-	rename("tempfile",filename);
-	sprintf(text,"%d messages deleted.\n",num);
-	write_user(user,text);
-	}
+
+sprintf(text,"Message %d deleted\n",num);
+write_user(user,text);
+
+unlink(filename);
+rename("tempfile",filename);
+
 }
 
 
@@ -6698,7 +6754,8 @@ while(!feof(fp)) {
 	if (*line=='\n') valid=1;
 	sscanf(line,"%s",w1);
 	if (valid && (!strcmp(w1,"~OLFrom:") || !strcmp(w1,"From:"))) {
-		write_user(user,remove_first(line));  
+		sprintf(text,"%d. %s",(cnt+1),remove_first(line));
+		write_user(user,text);  
 		cnt++;  valid=0;
 		}
 	fgets(line,ARR_SIZE-1,fp);
@@ -7357,7 +7414,7 @@ save_user_details(u,0);
 sprintf(text,"You promote %s to level:~OL%s.\n",u->name,level_name[u->path][u->level]);
 write_user(user,text);
 sprintf(text2,"~FG~OLYou have been promoted to level: ~RS~OL%s.\n",level_name[u->path][u->level]);
-send_mail(user,word[1],text2);
+send_mail(user,word[1],text2,1);
 sprintf(text,"%s PROMOTED %s to level %s.\n",user->name,word[1],level_name[u->path][u->level]);
 write_syslog(text,1,TOSYS);
 destruct_user(u);
@@ -7436,7 +7493,7 @@ save_user_details(u,0);
 sprintf(text,"You demote %s to level: ~OL%s.\n",u->name,level_name[u->path][u->level]);
 write_user(user,text);
 sprintf(text2,"~FR~OLYou have been demoted to level: ~RS~OL%s.\n",level_name[u->path][u->level]);
-send_mail(user,word[1],text2);
+send_mail(user,word[1],text2,1);
 sprintf(text,"%s DEMOTED %s to level %s.\n",user->name,word[1],level_name[u->path][u->level]);
 write_syslog(text,1,TOSYS);
 destruct_user(u);
@@ -7952,7 +8009,7 @@ strcpy(u->site,u->last_site);
 save_user_details(u,0);
 sprintf(text,"~FR~OL%s given a muzzle of level: ~RS~OL%s.\n",u->name,level_name[user->path][user->level]);
 write_user(user,text);
-send_mail(user,word[1],"~FR~OLYou have been muzzled!\n");
+send_mail(user,word[1],"~FR~OLYou have been muzzled!\n",1);
 sprintf(text,"%s muzzled %s.\n",user->name,u->name);
 write_syslog(text,1,TOSYS);
 destruct_user(u);
@@ -8017,7 +8074,7 @@ strcpy(u->site,u->last_site);
 save_user_details(u,0);
 sprintf(text,"~FG~OLYou remove %s's muzzle.\n",u->name);
 write_user(user,text);
-send_mail(user,word[1],"~FG~OLYou have been unmuzzled.\n");
+send_mail(user,word[1],"~FG~OLYou have been unmuzzled.\n",1);
 sprintf(text,"%s unmuzzled %s.\n",user->name,u->name);
 write_syslog(text,1,TOSYS);
 destruct_user(u);
@@ -10673,7 +10730,7 @@ char *keyword[]={
 char channame[WORD_LEN+1];
 
 if (word_count<3) {
-	write_user(user,"usage: .shch <channel name> <option> [options...]\n");
+	write_user(user,"usage: .channel <channel name> <option> [options...]\n");
 	write_user(user,"where option can be : open, delete, examine, long, phr, to, join, unjoin\n");
 	return;
 	}
@@ -10900,7 +10957,6 @@ sprintf(filename,"%s/%s",DATAFILES,CHANNELCONFIG);
 rename("tempfile",filename);
 
 }
-
 
 /**************************** EVENT FUNCTIONS ******************************/
 
