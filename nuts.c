@@ -160,6 +160,8 @@ while(1) {
 			disconnect_user(user);  user=next;
 			continue;
 			}
+		printf("%d\n",len);
+
 		/* ignore control code replies */
 		if ((unsigned char)inpstr[0]==255) { user=next;  continue; }
 
@@ -2399,7 +2401,7 @@ switch(user->misc_op) {
 	case 2: 
 	if (toupper(inpstr[0])=='E'
 	    || more(user,user->socket,user->page_file)!=1) {
-		user->misc_op=0;  user->filepos=0;  user->page_file[0]='\0';
+		user->misc_op=user->misc_op_store;  user->filepos=0;  user->page_file[0]='\0';
 		prompt(user); 
 		}
 	return 1;
@@ -2450,6 +2452,9 @@ switch(user->misc_op) {
 	case 11:
 	return 1;
 
+	case 12: /* news */ 
+		gestore_news(user,inpstr);
+		return 1;
 
 	}
 return 0;
@@ -2589,7 +2594,7 @@ editor_done(user);
 editor_done(user)
 UR_OBJECT user;
 {
-user->misc_op=0;
+user->misc_op=user->misc_op_store;
 user->edit_op=0;
 user->edit_line=0;
 free(user->malloc_start);
@@ -2774,7 +2779,8 @@ while (*pun!='\0') {
 				pun++;
 				break;
 			case 'w' :
-				strcpy(temp,user->room->name);
+				if (user->room==NULL) strcpy(temp,user->netlink->service);
+				else strcpy(temp,user->room->name);
 				delump(temp);
 				strcat(text,temp);
 				pun++;
@@ -3507,6 +3513,9 @@ user->prompt=prompt_def;
 user->colour=colour_def;
 user->charmode_echo=charecho_def;
 user->misc_op=0;
+user->misc_op_store=0;
+user->submisc_op=0;
+user->prompt_op=0;
 user->edit_op=0;
 user->edit_line=0;
 user->charcnt=0;
@@ -4799,12 +4808,11 @@ switch(com_num) {
 	case PEOPLE : who(user,1);  break;
 	case HELP   : help(user);  break;
 	case SHUTDOWN: shutdown_com(user);  break;
-	case NEWS:
-		sprintf(filename,"%s/%s",DATAFILES,NEWSFILE);
-		switch(more(user,user->socket,filename)) {
-			case 0: write_user(user,"There is no news.\n");  break;
-			case 1: user->misc_op=2;
-			}
+	case NEWS   : 
+		user->misc_op=12;
+		user->prompt_op=1;
+		user->submisc_op=0;
+		gestore_news(user,NULL);
 		break;
 	case READ  : read_board(user,inpstr);  break;
 	case WRITE : write_board(user,inpstr,0);  break;
@@ -4846,7 +4854,8 @@ switch(com_num) {
 		sprintf(filename,"%s/%s%s",DATAFILES,MAPFILE,user->room->maptype);
 		switch(more(user,user->socket,filename)) {
 			case 0: write_user(user,"There is no map.\n");  break;
-			case 1: user->misc_op=2;
+			case 1: user->misc_op_store=0;
+				user->misc_op=2;
 			}
 		break;
 	case LOGGING  : logging(user); break;
@@ -4920,7 +4929,10 @@ if (word[1][0] && direct_call) {
 			sprintf(filename,"%s/%s.L",USERFILES,u->name);
 			if (!(ret=more(user,user->socket,filename)))
 				write_user(user,"Non vedi niente di particolarmente rilevante\n");
-			else if (ret==1) user->misc_op=2;
+			else if (ret==1) {
+				user->misc_op_store=0;
+				user->misc_op=2;
+				}
 			if (u==user) {
 				sprintf(text,"%s si osserva attentamente...\n",user->name);
 				write_room_except(user->room,text,user);
@@ -6275,7 +6287,10 @@ while(*c) {
 sprintf(filename,"%s/%s",HELPFILES,word[1]);
 if (!(ret=more(user,user->socket,filename)))
 	write_user(user,"Sorry, there is no help on that topic.\n");
-if (ret==1) user->misc_op=2;
+if (ret==1) {
+	user->misc_op_store=0;
+	user->misc_op=2;
+	}
 }
 
 
@@ -6358,7 +6373,10 @@ write_user(user,text);
 sprintf(filename,"%s/%s.B",DATAFILES,rm->name);
 if (!(ret=more(user,user->socket,filename))) 
 	write_user(user,"There are no messages on the board.\n\n");
-else if (ret==1) user->misc_op=2;
+else if (ret==1) {
+	user->misc_op_store=0;
+	user->misc_op=2;
+	}
 if (user->vis) name=user->name; else name=invisname;
 if (rm==user->room) {
 	sprintf(text,"%s reads the message board.\n",name);
@@ -6390,6 +6408,7 @@ if (!done_editing) {
 			return;
 			}
 		write_user(user,"\n~BB*** Writing board message ***~RS\n\n");
+		user->misc_op_store=0;
 		user->misc_op=3;
 		editor(user,NULL,MAX_LINES);
 		return;
@@ -6724,7 +6743,10 @@ user->read_mail=time(0);
 fclose(infp);
 write_user(user,"\n~BB*** Your mail ***~RS\n\n");
 ret=more(user,user->socket,filename);
-if (ret==1) user->misc_op=2;
+if (ret==1) {
+	user->misc_op_store=0;
+	user->misc_op=2;
+	}
 }
 
 
@@ -6875,6 +6897,7 @@ if (user->type==REMOTE_TYPE) {
 	}
 sprintf(text,"\n~BB*** Writing mail message to %s ***~RS\n\n",word[1]);
 write_user(user,text);
+user->misc_op_store=0;
 user->misc_op=4;
 strcpy(user->mail_to,word[1]);
 editor(user,NULL,MAX_LINES);
@@ -7005,6 +7028,7 @@ char *c,filename[80];
 if (!done_editing) {
 	write_user(user,"\n~BB*** Writing profile ***~RS\n\n");
 	user->misc_op=5;
+	user->misc_op_store=0;
 	editor(user,NULL,MAX_LINES);
 	return;
 	}
@@ -7743,7 +7767,8 @@ if (!strcmp(word[1],"sites")) {
 		write_user(user,"There are no banned sites/domains.\n\n");
 		return;
 
-		case 1: user->misc_op=2;
+		case 1: user->misc_op_store=0;
+			user->misc_op=2;
 		}
 	return;
 	}
@@ -7755,7 +7780,8 @@ if (!strcmp(word[1],"users")) {
 		write_user(user,"There are no banned users.\n\n");
 		return;
 
-		case 1: user->misc_op=2;
+		case 1: user->misc_op_store=0;
+			user->misc_op=2;
 		}
 	return;
 	}
@@ -8624,7 +8650,9 @@ if (!(strcmp(word[1],"all"))) {
 	write_user(user,text);
 	switch(more(user,user->socket,filename)) {
 		case 0: write_user(user,emp);  return;
-		case 1: user->misc_op=2; 
+		case 1: 
+			user->misc_op_store=0;
+			user->misc_op=2; 
 		}
 	return;
 	}
@@ -8666,7 +8694,10 @@ while(!feof(fp)) {
 		user->filepos=ftell(fp)-1;
 		fclose(fp);
 		if (more(user,user->socket,filename)!=1) user->filepos=0;
-		else user->misc_op=2;
+		else {
+			user->misc_op_store=0;
+			user->misc_op=2;
+			}
 		return;
 		}
 	}
@@ -9451,7 +9482,10 @@ if (!(ret=more(user,user->socket,filename))) {
         write_user(user,"This document doesn't exists\n\n");
         return;
         }
-else if (ret==1) user->misc_op=2;
+else if (ret==1) {
+	user->misc_op_store=0;
+	user->misc_op=2;
+	}
 if (user->vis) name=user->name; else name=invisname;
 sprintf(text,"%s reads the document %s.\n",name,fil);
 write_room_except(user->room,text,user);
@@ -9782,7 +9816,8 @@ RM_OBJECT rm;
 if (!done_editing) {
         write_user(user,"\n~BB*** Writing room description ***\n\n");
         user->misc_op=8;
-        editor(user,NULL,ROOM_LINES);
+	user->misc_op_store=0;
+	editor(user,NULL,ROOM_LINES);
         return;
         }
 
@@ -9825,7 +9860,10 @@ if(!(strcmp("reserved",word[2]))) {
         sprintf(filename,"%s/%s",DATAFILES,RESMAPTYPE);
         if (!(ret=more(user,user->socket,filename)))
                 write_user(user,"There are no reserved map types.\n");
-        else if (ret==1) user->misc_op=2;
+        else if (ret==1) {
+		user->misc_op_store=0;
+		user->misc_op=2;
+		}
         return;
         }
 
@@ -10210,7 +10248,8 @@ char *c,filename[80];
 if (!done_editing) {
         write_user(user,"\n~BB*** Writing your aspect ***~RS\n\n");
         user->misc_op=9;
-        editor(user,NULL,ASPECT_LINES);
+	user->misc_op_store=0;
+	editor(user,NULL,ASPECT_LINES);
         return;
         }
 
@@ -11401,6 +11440,71 @@ switch(kw_code) {
 	}
 
 }
+
+
+
+gestore_news(user,inpstr)
+UR_OBJECT user;
+char *inpstr;
+{
+char filename[80];
+
+switch (user->submisc_op) {
+	case 0: break;
+	case 1:
+		switch(toupper(*inpstr)) {
+			case 'R' : 
+				write_user(user,"Read\n");
+				/*
+				user->submisc_op=1;
+				*/
+				break;
+			case 'P' :
+				write_user(user,"Write\n");
+				/*
+				user->submisc_op=2;
+				*/
+				break;
+			case 'L' :
+				write_user(user,"\n ~BB~FW*** newsgroup available on the talker ***~RS\n\n");
+				sprintf(filename,"%s/%s",NGDIR,NGLIST);
+				switch(more(user,user->socket,filename)) {
+                        		case 0: write_user(user,"There are no newsgroups.\n");  
+						user->prompt_op=1;
+						user->submisc_op=0;
+						break;
+
+                        		case 1: user->misc_op_store=12;
+		                                user->misc_op=2;
+						user->prompt_op=0;
+					}
+				break;
+
+			case 'E' :
+				write_user(user,"End\n");
+				user->misc_op=0;
+				user->submisc_op=0;
+				user->prompt_op=0;
+				prompt(user);
+				return;
+			default:
+				user->prompt_op=1;
+			}
+		}
+
+switch (user->prompt_op) {
+	case 0: break;
+	case 1:
+		write_user(user,"~FT(R)ead, (P)ost, (L)ist newsgroup, (E)nd > ");
+		user->submisc_op=1; /* attendi la scelta */
+		return;
+	}
+
+}
+
+
+
+
 
 
 
