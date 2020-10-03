@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts42d.h"
+#include "nuts42e.h"
 
 #define VERSION "3.3.3"
 
@@ -51,6 +51,7 @@ char *argv[];
 fd_set readmask; 
 int i,len,counter;
 char inpstr[ARR_SIZE];
+char temp[WORD_LEN+1];
 char *remove_first();
 UR_OBJECT user,next;
 NL_OBJECT nl;
@@ -234,7 +235,16 @@ while(1) {
 			}
 		if (misc_ops(user,inpstr))  {  user=next;  continue;  }
 		com_num=-1;
-		if (user->command_mode || strchr(".;!<>-#+",inpstr[0])) 
+		i=0;
+		temp[0]='\0';
+		strcpy(temp,".");
+
+		for (i=0;i<MAX_USER_SHORTCUT;++i) {
+			if (user->shortcut[i][0]=='\0') break;
+			strncat(temp,user->shortcut[i],1);
+			}
+
+		if (user->command_mode || strchr(temp,inpstr[0])) 
 			exec_com(user,inpstr);
 		else say(user,inpstr);
 		if (!destructed) {
@@ -1887,13 +1897,17 @@ switch(user->login) {
 	user->total_login=0;
 	user->last_login_len=0;
 	user->room=room_first;
+	strcpy(user->shortcut[0],">tell");
+	strcpy(user->shortcut[1],"<pemote");
+	strcpy(user->shortcut[2],"-echo");
+	strcpy(user->shortcut[3],"+sto");
+	strcpy(user->shortcut[4],";emote");
 	save_user_details(user,1);
 	sprintf(text,"New user \"%s\" created.\n",user->name);
 	write_syslog(text,1,TOSYS);
 	connect_user(user);
 	}
 }
-	
 
 
 /*** Count up attempts made by user to login ***/
@@ -1912,6 +1926,7 @@ user->pass[0]='\0';
 user->prompt_string[0]='\0';
 for (i=0;i<MAX_USER_CHANNEL;++i) user->channel[i]=NULL;
 for (i=0;i<MAX_USER_ALIAS;++i) user->alias[i][0]='\0';
+for (i=0;i<MAX_USER_SHORTCUT;++i) user->shortcut[i][0]='\0';
 user->temp_room=room_first;
 write_user(user,"Give me a name: ");
 echo_on(user);
@@ -1934,7 +1949,7 @@ CH_OBJECT ch;
 char *keyword[]={
 "NAME", "PASS",  "DATA",  "SITE", "PROMPT",
 "DESC", "INPHR", "OUTPHR","CHAN", "ROOM", 
-"ALIAS","END",   "*"
+"SHORT", "ALIAS","END",   "*"
 };
 
 sprintf(filename,"%s/%s",DATAFILES,USERDATA);
@@ -2029,7 +2044,16 @@ while (!feof(fp)) {
 				user->temp_room=room_first;
 			break;
 
-		case 10: /* alias */
+		case 10: /* short */
+			if (!got_it) break;
+			sscanf(line,"%*s %s",temp);
+			for(i=0;i<MAX_USER_SHORTCUT;++i)
+				if (user->shortcut[i][0]=='\0') break;
+			if (i==MAX_USER_ALIAS) break;
+			strcpy(user->shortcut[i],temp);
+			break;
+
+		case 11: /* alias */
 			sscanf(line,"%*s %s",temp);
 			if (!got_it) {
 				strcpy(tempa,user->name);
@@ -2046,7 +2070,7 @@ while (!feof(fp)) {
 			strcpy(user->alias[i],temp);
 			break;
 
-		case 11: /* end */
+		case 12: /* end */
 			if (!got_it) break;
 			fclose(fp);
 			return 1;
@@ -2120,6 +2144,11 @@ while (!feof(fp)) {
 			fprintf(tmp,"ALIAS %s\n",user->alias[i]);
 			}
 		fprintf(tmp,"ROOM %s\n",user->room->name);
+		for (i=0;i<MAX_USER_SHORTCUT;++i) {
+			if (user->shortcut[i][0]=='\0') break;
+			fprintf(tmp,"SHORT %s\n",user->shortcut[i]);
+			}
+
 		fprintf(tmp,"END\n");
 		while (strncmp(line,"END",3)) fgets(line,82,fp);
 		fgets(line,82,fp);
@@ -2149,6 +2178,10 @@ if (!flag) {
 	for(i=0;i<MAX_USER_ALIAS;++i) {
 		if (user->alias[i][0]=='\0') break;
 		fprintf(tmp,"ALIAS %s\n",user->alias[i]);
+		}
+	for (i=0;i<MAX_USER_SHORTCUT;++i) {
+		if (user->shortcut[i][0]=='\0') break;
+		fprintf(tmp,"SHORT %s\n",user->shortcut[i]);
 		}
 	fprintf(tmp,"ROOM %s\n",user->room->name);
 	fprintf(tmp,"END\n");
@@ -3488,6 +3521,7 @@ user->owner=NULL;
 for(i=0;i<REVTELL_LINES;++i) user->revbuff[i][0]='\0';
 for(i=0;i<MAX_USER_CHANNEL;++i) user->channel[i]=NULL;
 for(i=0;i<MAX_USER_ALIAS;++i) user->alias[i][0]='\0';
+for(i=0;i<MAX_USER_SHORTCUT;++i) user->shortcut[i][0]='\0';
 return user;
 }
 
@@ -4621,12 +4655,11 @@ if (!comword[0]) {
 	}
 
 /* get com_num */
-if (!strcmp(word[0],">")) strcpy(word[0],"tell");
-if (!strcmp(word[0],"<")) strcpy(word[0],"pemote");
-if (!strcmp(word[0],"-")) strcpy(word[0],"echo");
-if (!strcmp(word[0],"+")) strcpy(word[0],"sto");
-if (inpstr[0]==';') strcpy(word[0],"emote");
-	else inpstr=remove_first(inpstr);
+for (i=0;i<MAX_USER_SHORTCUT;++i)
+	if (!strncmp(word[0],user->shortcut[i],1))
+		strcpy(word[0],&user->shortcut[i][1]);
+
+if (i==MAX_USER_SHORTCUT) inpstr=remove_first(inpstr);
 
 i=0;
 len=strlen(comword);
@@ -4849,8 +4882,6 @@ switch(com_num) {
 	case STO      : to(user,inpstr); break;
 	case DOC     : document(user); break;
 	case ROOM    : room_opt(user,inpstr); break;
-	case PATH    : path(user); break;
-	case LEVEL   : level_list(user); break;
 	case HULK     : hulk(user); break;
 	case UNDO     : undo(user); break;
 	case ASPECT   : aspect(user,0); break;
@@ -10037,72 +10068,6 @@ room_save(user);
 }
 
 
-path(user)
-UR_OBJECT user;
-{
-int value;
-
-if (user->path!=0) {
-	write_user(user,"You can't change your path again\n");
-	return;
-	}
-
-if (word_count<2) {
-	write_user(user,"usage: .path <path number>\n");
-	return;
-	}
-
-value= atoi(word[1]);
-
-if (value>MAX_LEVEL_TYPE || value<0) {
-	write_user(user,"invalid value\n");
-	return;
-	}
-
-user->path=value;
-
-sprintf(text,"Now your level name is : ~OL%s\n",level_name[user->path][user->level]);
-
-write_user(user,text);
-
-}
-
-level_list(user)
-UR_OBJECT user;
-{
-int value,i;
-
-
-if (word_count<2) {
-	write_user(user,"usage: .level <path number>\n\n");
-	write_user(user,"Tipi di path disponibili:\n");
-	for (i=0; i<=MAX_LEVEL_TYPE; i++) {
-		sprintf(text,"%d. %s\n",i,level_type[i]);
-		write_user(user,text);
-		}
-	return;
-	}
-
-value= atoi(word[1]);
-
-
-if (value>MAX_LEVEL_TYPE || value<0) {
-	write_user(user,"invalid value\n");
-	return;
-	}
-
-i=0;
-
-sprintf(text,"~FT(%s)\n",level_type[value]);
-write_user(user,text);
-
-while(level_name[value][i][0]!='*') {
-		sprintf(text,"%d. %s\n",i,level_name[value][i]);
-		write_user(user,text);
-		++i;
-		}
-}
-
 hulk(user)
 UR_OBJECT user;
 {
@@ -10756,37 +10721,101 @@ set_opt(user,inpstr)
 UR_OBJECT user;
 char *inpstr;
 {
+int kw_code,i,value;
+char *keyword[]={
+"alias","prompt","path","shortcut","*"
+};
 
 if (word_count<2) {
-	write_user(user,"Usage: .set <option> <option data>\n");
+	write_user(user,"usage: .set <keyword> value\n");
+	write_user(user,"for keyword list do .help set\n");
 	return;
 	}
 
-if (!(strncmp(word[1],"alias",strlen(word[1])))) {
-	inpstr=remove_first(inpstr);
-	if (inpstr[0]=='\0') {
-		write_user(user,"specify your new alias, please\n");
-		return;
-		}
-	set_alias(user,inpstr);
-	return;
+kw_code=0;
+
+while(keyword[kw_code][0]!='*') {
+	if (!strncmp(word[1],keyword[kw_code],strlen(word[1]))) break;
+	kw_code++;
 	}
 
-if (!(strncmp(word[1],"prompt",strlen(word[1])))) {
-	inpstr=remove_first(inpstr);
-	if (inpstr[0]=='\0') {
-		write_user(user,"specify your new prompt, please\n");
+switch(kw_code) {
+	case 0:
+		inpstr=remove_first(inpstr);
+		if (inpstr[0]=='\0') {
+			write_user(user,"specify your new alias, please\n");
+			return;
+			}
+		strtolower(inpstr);
+		set_alias(user,inpstr);
+		break;
+
+	case 1:
+		inpstr=remove_first(inpstr);
+		if (inpstr[0]=='\0') {
+			write_user(user,"specify your new prompt, please\n");
+			return;
+			}
+		if (strlen(inpstr)>USER_PROMPT_LEN) {
+			write_user(user,"Prompt string too long\n");
+			return;
+			}
+		strcpy(user->prompt_string,inpstr);
+		break;
+
+	case 2:
+	if (user->path!=0) {
+		write_user(user,"You can't change your path again\n");
 		return;
 		}
-	if (strlen(inpstr)>USER_PROMPT_LEN) {
-		write_user(user,"Prompt string too long\n");
+
+	value= atoi(word[2]);
+
+	if (value>MAX_LEVEL_TYPE || value<0) {
+		write_user(user,"invalid value\n");
 		return;
 		}
-	strcpy(user->prompt_string,inpstr);
-	return;
+
+	user->path=value;
+	sprintf(text,"Now your level name is : ~OL%s\n",level_name[user->path][user->level]);
+	write_user(user,text);
+	break;
+
+	case 3: /* shortcut */
+		if (word_count<4) {
+			write_user(user,"Usage : .set shortcut <character> <command>\n");
+			return;
+			}
+
+		if (word[2][0]=='.') {
+			write_user(user,"You can't use the shortcut .\n");
+			return;
+			}
+
+		for (i=0;i<MAX_USER_SHORTCUT;++i) {
+			if (user->shortcut[i][0]=='\0') break;
+			if (user->shortcut[i][0]==word[2][0]) {
+				sprintf(text,"The shortcut %c is already assigned to the command %s\n",word[2][0],&user->shortcut[i][1]);
+				write_user(user,text);
+				return;
+				}
+			}
+
+		if (i==MAX_USER_SHORTCUT) {
+			write_user(user,"Sorry, you have too many shortcuts...\n");
+			return;
+			}
+
+		if (word[3][0]=='.') sprintf(user->shortcut[i],"%c%s",word[2][0],&word[3][1]);
+		else sprintf(user->shortcut[i],"%c%s",word[2][0],word[3]);
+		sprintf(text,"shortcut %c added\n",word[2][0]);
+		write_user(user,text);
+		break;
+
+	default: write_user(user,"Unknown option\n");
+		return;
 	}
 
-write_user(user,"Invalid option\n");
 }
 
 
@@ -10794,23 +10823,62 @@ unset_opt(user,inpstr)
 UR_OBJECT user;
 char *inpstr;
 {
+int kw_code,i,j,value;
+char *keyword[]={
+"alias","prompt","shortcut","*"
+};
 
 if (word_count<2) {
-	write_user(user,"Usage: .unset <option> <option data>\n");
+	write_user(user,"usage: .unset <keyword> value\n");
+	write_user(user,"for keyword list do .help unset\n");
 	return;
 	}
 
-if (!(strncmp(word[1],"alias",strlen(word[1])))) {
-	inpstr=remove_first(inpstr);
-	if (inpstr[0]=='\0') {
+kw_code=0;
+
+while(keyword[kw_code][0]!='*') {
+	if (!strncmp(word[1],keyword[kw_code],strlen(word[1]))) break;
+	kw_code++;
+	}
+
+switch(kw_code) {
+	case 0:
+	if (word_count<3) {
 		write_user(user,"specify your alias, please\n");
 		return;
 		}
+	inpstr=remove_first(inpstr);
 	unset_alias(user,inpstr);
-	return;
+	break;
+
+	case 1: 
+	strcpy(user->prompt_string,"~FT<%h, %l, %n %d>%i");
+	write_user(user,"prompt restored\n");
+	break;
+
+	case 2: /* shortcut */
+		if (word_count<3) {
+			write_user(user,"Usage: .unset shortcut <character>\n");
+			return;
+			}
+
+		j=0;
+		for(i=0;i<MAX_USER_SHORTCUT;++i) {
+			if (user->shortcut[i][0]==word[2][0]) {
+				for (j=i;j<MAX_USER_SHORTCUT-1;++j) strcpy(user->shortcut[j],user->shortcut[j+1]);
+				user->shortcut[MAX_USER_SHORTCUT-1][0]='\0';
+				sprintf(text,"Shortcut unsetted\n",inpstr);
+				write_user(user,text);
+				}
+			}
+		if (!j) write_user(user,"You don't have this shortcut\n");
+		break;
+
+	default: 
+		write_user(user,"Unknown option\n");
+		return;
 	}
 
-write_user(user,"Invalid option\n");
 }
 
 set_alias(user,inpstr)
@@ -10909,6 +10977,7 @@ for(i=0;i<MAX_USER_ALIAS;++i) {
 		user->alias[MAX_USER_ALIAS-1][0]='\0';
 		sprintf(text,"Alias %s unsetted\n",inpstr);
 		write_user(user,text);
+		save_user_details(user,1);  
 		}
 	}
 
@@ -11241,15 +11310,16 @@ rename("tempfile",filename);
 list_opt(user)
 UR_OBJECT user;
 {
-int kw_code,i,cnt;
+int kw_code,i,cnt,value;
 char temp[80],temp2[80];
 CH_OBJECT ch;
 char *keyword[]={
-"channels","*"
+"channels","level","shortcut","*"
 };
 
 if (word_count<2) {
-	write_user(user,"usage: .list [channels]\n");
+	write_user(user,"usage: .list [keyword] <value>\n");
+	write_user(user,"for keyword list do .help list\n");
 	return;
 	}
 
@@ -11286,6 +11356,47 @@ switch(kw_code) {
 			write_user(user,text);
 			}
 		break;
+	case 1:
+
+	if (word_count<3) {
+		write_user(user,"Tipi di path disponibili:\n");
+		for (i=0; i<=MAX_LEVEL_TYPE; i++) {
+			sprintf(text,"%d. %s\n",i,level_type[i]);
+			write_user(user,text);
+			}
+		return;
+		}
+
+	value=atoi(word[2]);
+
+	if (value>MAX_LEVEL_TYPE || value<0) {
+		write_user(user,"invalid value\n");
+		return;
+		}
+
+	i=0;
+
+	sprintf(text,"~FT(%s)\n",level_type[value]);
+	write_user(user,text);
+
+	while(level_name[value][i][0]!='*') {
+		sprintf(text,"%d. %s\n",i,level_name[value][i]);
+		write_user(user,text);
+		++i;
+		}
+	break;
+
+	case 2: /* shortcut */
+		write_user(user,"\n~FG~BB*** Your Shortcuts ***~RS\n\n");
+		for (i=0;i<MAX_USER_SHORTCUT;++i) {
+			if (user->shortcut[i][0]=='\0') break;
+			sprintf(text,"%c -> %s\n",user->shortcut[i][0],&user->shortcut[i][1]);
+			write_user(user,text);
+			}
+		if (!i) write_user(user,"No shortcuts\n");
+		write_user(user,"\n");
+		break;
+
 	default: write_user(user,"Unknown option\n");
 	}
 
