@@ -8439,9 +8439,14 @@ UR_OBJECT user;
 char *inpstr;
 {
 
-if (word_count<2) {
-	if(user->level>MAGHETTO) {
+if (word_count<2) {	
+	if(user->level>=ADVANCED) {
 		write_user(user,"usage: .room [open/link/slink/map/desc/status/reload/delete] <other info...>\n");
+	        sprintf(text,"\n"); 
+		return;
+		}
+	if(user->level>MAGHETTO && user->level<ADVANCED) {
+		write_user(user,"usage: .room [open/link/slink/map/desc/status/reload] <other info...>\n");
 	        sprintf(text,"\n"); 
 		return;
 		}
@@ -8518,12 +8523,22 @@ if (!(strcmp("reload",word[1]))) {
 	}
 
 if (!(strcmp("delete",word[1]))) {
-	if (user->level<WIZ) { write_user(user,"Invalid option\n"); return; }
+	if (user->level<ADVANCED) { write_user(user,"Invalid option\n"); return; }
 	inpstr=remove_first(inpstr);
 	while(*inpstr==' ') inpstr++;
 	if (*inpstr=='\0') { write_user(user,"specify room name, please\n"); return; }
 	get_end(inpstr);
 	room_delete(user,inpstr);
+	return;
+	}
+
+if (!(strcmp("unlink",word[1]))) {
+	if (user->level<WIZ) { write_user(user,"Invalid option\n"); return; }
+	inpstr=remove_first(inpstr);
+	while(*inpstr==' ') inpstr++;
+	if (*inpstr=='\0') {	write_user(user,"specify room name, please\n"); return; }
+	get_end(inpstr);
+	room_unlink(user,inpstr);	
 	return;
 	}
 
@@ -8775,7 +8790,7 @@ UR_OBJECT user;
 RM_OBJECT rm;
 char filename[80];
 FILE *fp;
-char *c;
+char c;
 int i;
 
 rm=user->room;
@@ -8793,7 +8808,7 @@ if (!(fp=fopen(filename,"r"))) {
         }
 
 i=0;
-*c=getc(fp);
+c=getc(fp);
 while(!feof(fp)) {
         if (i==ROOM_DESC_LEN) {
                 sprintf(text,"~OL~FWERROR : ~FRDescription too long...max %d chars\n",ROOM_DESC_LEN);
@@ -8803,8 +8818,8 @@ while(!feof(fp)) {
                 write_syslog(text,1,TOSYS);
                 break;
                 }
-        rm->desc[i]=*c;
-        *c=getc(fp);  ++i;
+        rm->desc[i]=c;
+        c=getc(fp);  ++i;
 }
 rm->desc[i]='\0';
 fclose(fp);
@@ -8975,19 +8990,13 @@ char *inpstr;
 {
 RM_OBJECT room,victim;
 UR_OBJECT u;
-int i;
+int i,j;
 char tvar[ROOM_NAME_LEN+1];
 
 inump(inpstr);
 
 if ((victim=get_room(inpstr,user))==NULL) return;
 
-for(i=0;i<MAX_LINKS;++i) {
-	if (victim->link[i]!=NULL) {
-		write_user(user,"This room is already linked, you can't delete it\n");
-		return;
-		}
-	}
 
 for (u=user_first;u!=NULL;u=u->next) {
 	if (u->room==victim) {
@@ -8995,6 +9004,17 @@ for (u=user_first;u!=NULL;u=u->next) {
 		return;
 		}
 	}
+
+
+for (room=room_first;room!=NULL;room=room->next) {
+	for(i=0;i<MAX_LINKS;++i) {
+		if (room->link[i]==victim) {
+			for (j=i;j<MAX_LINKS-1;++j) room->link[j]=room->link[j+1];
+			room->link[MAX_LINKS-1]=NULL;
+			}
+		}
+	}
+
 
 
 sprintf(text,"%s has deleted %s\n",user->name,victim->name);
@@ -9007,6 +9027,60 @@ delump(tvar);
 destruct_room(victim);
 
 sprintf(text,"~OLSYSTEM : ~FGroom %s deleted\n",tvar);
+write_user(user,text);
+room_save(user);
+}
+
+room_unlink(user,inpstr)
+UR_OBJECT user;
+char *inpstr;
+{
+RM_OBJECT room,victim;
+UR_OBJECT u;
+int i,j,flag=0;
+char tvar[ROOM_NAME_LEN+1];
+
+room=user->room;
+
+inump(inpstr);
+
+if ((victim=get_room(inpstr,user))==NULL) return;
+
+if (victim==room) {
+	write_user(user,"what???\n");
+	return;
+	}
+
+
+for(i=0;i<MAX_LINKS;++i) {
+	if (room->link[i]==victim) {
+		for (j=i;j<MAX_LINKS-1;++j) room->link[j]=room->link[j+1];
+		room->link[MAX_LINKS-1]=NULL;
+		flag=1;
+		}
+	if (victim->link[i]==room) {
+		for (j=i;j<MAX_LINKS-1;++j) victim->link[j]=victim->link[j+1];
+		victim->link[MAX_LINKS-1]=NULL;
+		flag=1;
+		}
+	}
+
+
+strcpy(tvar,victim->name);
+delump(tvar);
+
+if (!flag) {
+	sprintf(text,"The room %s is not adjoined to here\n",tvar);
+	write_user(user,text);
+	return;
+	}
+
+
+sprintf(text,"%s has unlinked %s and %s\n",user->name,room->name,victim->name);
+write_syslog(text,1,TOSYS);
+write_syslog(text,1,TOROOM);
+
+sprintf(text,"~OLSYSTEM : ~FGroom %s unlinked and vice-versa\n",tvar);
 write_user(user,text);
 room_save(user);
 }
