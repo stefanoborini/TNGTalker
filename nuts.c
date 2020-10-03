@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts429.h"
+#include "nuts42a.h"
 
 #define VERSION "3.3.3"
 
@@ -1692,7 +1692,6 @@ switch (fil) {
         case TOSYS : sprintf(filename,"%s/%s.log",LOGDIR,SYSLOG); break;
         case TOACCOUNT: sprintf(filename,"%s/%s.log",LOGDIR,ACCOUNTFILE);break;
         case TOROOM   : sprintf(filename,"%s/%s.log",LOGDIR,ROOMFILE); break;
-	case TONICK   : sprintf(filename,"%s/%s.log",LOGDIR,NICKFILE); break;
         default: sprintf(filename,"%s/%s.log",LOGDIR,SYSLOG);
         }
 
@@ -1875,8 +1874,6 @@ switch(user->login) {
 	save_user_details(user,1);
 	sprintf(text,"New user \"%s\" created.\n",user->name);
 	write_syslog(text,1,TOSYS);
-	sprintf(text,"%s\n",user->name);
-	write_syslog(text,0,TONICK);
 	connect_user(user);
 	}
 }
@@ -2893,40 +2890,6 @@ pun=inp;
                         }
                 pun++;
                 }
-}
-
-
-remove_from_user_list(name)
-char *name;
-{
-FILE *fp,*temp;
-char filename[80];
-char str[USER_NAME_LEN+1];
-
-sprintf(filename,"%s/%s.log",LOGDIR,NICKFILE);
-
-if (!(fp=fopen(filename,"r"))) {
-	write_syslog("ERROR: couldn't open file NICKFILE in remove_from_user_list()\n",1,TOSYS);
-	return;
-	}
-
-if (!(temp=fopen("tempfile","w"))) {
-	write_syslog("ERROR: couldn't open tempfile in remove_from_user_list()\n",1,TOSYS);
-	fclose(fp);
-        return;
-        }
-
-fscanf(fp,"%s",str);
-
-while(!feof(fp)) {
-	if (strcmp(str,name)) fprintf(temp,"%s\n",str);
-	fscanf(fp,"%s",str);
-	}
-
-fclose(fp);
-fclose(temp);
-
-rename("tempfile",filename);
 }
 
 
@@ -4824,6 +4787,7 @@ switch(com_num) {
 	case SET      : set_opt(user,inpstr); break;
 	case UNSET    : unset_opt(user,inpstr); break;
 	case IGNBANNER: toggle_ignbanner(user); break;
+	case SHCH     : shch_opt(user,inpstr); break;
 	default: write_user(user,"Command not executed in exec_com().\n");
 	}	
 }
@@ -8919,7 +8883,6 @@ if (this_user) {
 	unlink(filename);	
 	sprintf(filename,"%s/%s.L",USERFILES,name);
 	unlink(filename);	
-	remove_from_user_list(name);
 	remove_from_user_file(name);
 	return;
 	}
@@ -8964,7 +8927,6 @@ unlink(filename);
 sprintf(filename,"%s/%s.L",USERFILES,word[1]);
 unlink(filename);	
 
-remove_from_user_list(word[1]);
 remove_from_user_file(word[1]);
 sprintf(text,"\07~FR~OL~LIUser %s deleted!\n",word[1]);
 write_user(user,text);
@@ -9987,7 +9949,6 @@ unlink(filename);
 sprintf(filename,"%s/%s.L",USERFILES,vicname);
 unlink(filename);	
 
-remove_from_user_list(vicname);
 remove_from_user_file(vicname);
 }
 
@@ -10699,9 +10660,246 @@ user->ignbanner=0;
 }
 
 
+shch_opt(user,inpstr)
+UR_OBJECT user;
+char *inpstr;
+{
+CH_OBJECT ch,tempch;
+UR_OBJECT u;
+int kw_code,i,cnt,exists=0;
+char *keyword[]={
+"open","delete","examine","long","phr","to","join","unjoin","*"
+};
+char channame[WORD_LEN+1];
 
+if (word_count<3) {
+	write_user(user,"usage: .shch <channel name> <option> [options...]\n");
+	write_user(user,"where option can be : open, delete, examine, long, phr, to, join, unjoin\n");
+	return;
+	}
 
+for (ch=ch_first;ch!=NULL;ch=ch->next) if(!(strcmp(word[1],ch->name))) break;
+	if (ch!=NULL) exists=1;
 
+kw_code=0;
+
+while(keyword[kw_code][0]!='*') {
+	if (!strncmp(word[2],keyword[kw_code],strlen(word[2]))) break;
+	kw_code++;
+	}
+
+switch(kw_code) {
+	case 0:
+		if (exists) {
+			sprintf(text,"The channel %s is already used\n",ch->name);
+			write_user(user,text);
+			return;
+			}
+
+		if (strlen(word[1])>WORD_LEN) {
+			write_user(user,"Name too long\n");
+			return;
+			}
+
+		if ((ch=create_channel())==NULL) {
+			write_user(user,"unable to create channel object.\n");
+			write_syslog("unable to create channel object in shch_opt()\n");
+			return;
+			}
+
+		strcpy(ch->name,word[1]);		
+		strcpy(ch->long_name,ch->name);
+		strcpy(ch->phrase,"[canale ~OL%3~RS] %1 dice: ");
+		strcpy(ch->phraseto,"[canale ~OL%3~RS] %1 dice a %2: ");
+		strcpy(ch->join,"[canale ~OL%3~RS] %1 joina il canale");
+		strcpy(ch->unjoin,"[canale ~OL%3~RS] %1 lascia il canale");
+		sprintf(text,"channel %s created\n",ch->name);
+		write_user(user,text);
+		sprintf(text,"New channel %s created by %s\n",ch->name,user->name);
+		write_syslog(text,1,TOSYS);
+		break;
+
+	case 1:
+		if (!exists) {
+			write_user(user,"this channel does not exists\n");
+			return;
+			}
+		strcpy(channame,ch->name);
+		for (u=user_first;u!=NULL;u=u->next) {
+			for (i=0;i<MAX_USER_CHANNEL;++i) {
+				if (u->channel[i]==ch) {
+					for (cnt=i;cnt<MAX_USER_CHANNEL-1;++cnt) {
+						u->channel[cnt]=u->channel[cnt+1];
+						u->channel[MAX_USER_CHANNEL-1]=NULL;
+						}
+					sprintf(text,"Canale %s cancellato... auto unjoin effettuato\n",channame);
+					write_user(user,text);
+					}
+				}
+			}				
+		destruct_channel(ch);
+		sprintf(text,"%s channel destructed\n",channame);
+		write_user(user,text);
+		sprintf(text,"Channel %s destructed by %s\n",channame,user->name);
+		write_syslog(text,1,TOSYS);
+		break;
+	
+	case 2:		
+		if (!exists) {
+			write_user(user,"this channel does not exists\n");
+			return;
+			}
+		sprintf(text,"Channel %s:\nLong name = %s\nPhrase = %s\n",ch->name,ch->long_name,ch->phrase);
+		write_user(user,text);
+		sprintf(text,"Phrase to = %s\nJoin = %s\nUnjoin = %s\n",ch->phraseto,ch->join,ch->unjoin);
+		write_user(user,text);
+		return;
+
+	case 3:
+		if (!exists) {
+			write_user(user,"this channel does not exists\n");
+			return;
+			}
+
+		inpstr=remove_first(remove_first(inpstr));
+
+		if (word_count<4) {
+			strcpy(ch->long_name,ch->name);
+			break;
+			}
+		
+		if (strlen(inpstr)>WORD_LEN) {
+			write_user(user,"Long name too long\n");
+			return;
+			}
+		strcpy(ch->long_name,inpstr);
+		sprintf(text,"%s long name changed.\n",ch->name);
+		write_user(user,text);
+		sprintf(text,"%s long name changed by %s\n",ch->name,user->name);
+		write_syslog(text,1,TOSYS);
+		break;
+
+	case 4: 
+		if (!exists) {
+			write_user(user,"this channel does not exists\n");
+			return;
+			}
+		if (word_count<4) {
+			strcpy(ch->phrase,"[canale ~OL%3~RS] %1 dice: ");
+			break;
+			}
+
+		inpstr=remove_first(remove_first(inpstr));
+		if (strlen(inpstr)>PHRASE_LEN) {
+			write_user(user,"Phrase too long\n");
+			return;
+			}
+		strcpy(ch->phrase,inpstr);
+		sprintf(text,"%s phrase changed.\n",ch->name);
+		write_user(user,text);
+		sprintf(text,"%s phrase changed by %s\n",ch->name,user->name);
+		write_syslog(text,1,TOSYS);
+		break;
+	case 5:
+		if (!exists) {
+			write_user(user,"this channel does not exists\n");
+			return;
+			}
+		if (word_count<4) {
+			strcpy(ch->phraseto,"[canale ~OL%3~RS] %1 dice a %2: ");
+			break;
+			}
+
+		inpstr=remove_first(remove_first(inpstr));
+		if (strlen(inpstr)>PHRASE_LEN) {
+			write_user(user,"Phraseto too long\n");
+			return;
+			}
+		strcpy(ch->phraseto,inpstr);
+		sprintf(text,"%s phraseto changed.\n",ch->name);
+		write_user(user,text);
+		sprintf(text,"%s phraseto changed by %s\n",ch->name,user->name);
+		write_syslog(text,1,TOSYS);
+		break;
+	case 6:
+
+		if (!exists) {
+			write_user(user,"this channel does not exists\n");
+			return;
+			}
+		if (word_count<4) {
+			strcpy(ch->join,"[canale ~OL%3~RS] %1 joina il canale");
+			break;
+			}
+
+		inpstr=remove_first(remove_first(inpstr));
+		if (strlen(inpstr)>PHRASE_LEN*2) {
+			write_user(user,"join phrase too long\n");
+			return;
+			}
+		strcpy(ch->join,inpstr);
+		sprintf(text,"%s join phrase changed.\n",ch->name);
+		write_user(user,text);
+		sprintf(text,"%s join phrase changed by %s\n",ch->name,user->name);
+		write_syslog(text,1,TOSYS);
+		break;
+	case 7:
+		if (!exists) {
+			write_user(user,"this channel does not exists\n");
+			return;
+			}
+		if (word_count<4) {
+			strcpy(ch->unjoin,"[canale ~OL%3~RS] %1 lascia il canale");
+			break;
+			}
+
+		inpstr=remove_first(remove_first(inpstr));
+		if (strlen(inpstr)>PHRASE_LEN*2) {
+			write_user(user,"unjoin phrase too long\n");
+			return;
+			}
+		strcpy(ch->unjoin,inpstr);
+		sprintf(text,"%s unjoin phrase changed.\n",ch->name);
+		write_user(user,text);
+		sprintf(text,"%s unjoin phrase changed by %s\n",ch->name,user->name);
+		write_syslog(text,1,TOSYS);
+		break;
+
+	default: write_user(user,"Unknown option\n");
+		return;
+	}
+
+save_channels();
+}
+
+save_channels()
+{
+CH_OBJECT ch;
+FILE *fp;
+char filename[80];
+
+if (!(fp=fopen("tempfile","w"))) {
+	write_syslog("ERROR: unable to open tempfile in save_channels()\n",1,TOSYS);
+	return;
+	}
+
+for (ch=ch_first;ch!=NULL;ch=ch->next) {
+	fprintf(fp,"NAME %s\n",ch->name);
+	fprintf(fp,"LONG %s\n",ch->long_name);
+	fprintf(fp,"PHR %s\n",ch->phrase);
+	fprintf(fp,"PHRTO %s\n",ch->phraseto);
+	fprintf(fp,"JOIN %s\n",ch->join);
+	fprintf(fp,"UNJOIN %s\n",ch->unjoin);
+	fprintf(fp,"END\n");
+	}
+
+fclose(fp);
+
+sprintf(filename,"%s/%s",DATAFILES,CHANNELCONFIG);
+
+rename("tempfile",filename);
+
+}
 
 
 /**************************** EVENT FUNCTIONS ******************************/
