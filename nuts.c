@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts426.h"
+#include "nuts427.h"
 
 #define VERSION "3.3.3"
 
@@ -516,9 +516,12 @@ while(!feof(fp)) {
 	}
 fclose(fp);
 
-config_line=0;
 
+/* parsing room file */
+
+config_line=0;
 sprintf(filename,"%s/%s",DATAFILES,ROOMCONFIG);
+
 if (!(fp=fopen(filename,"r"))) {
         perror("NUTS: can't open room config file"); boot_exit(1);
         }
@@ -535,7 +538,11 @@ while (!feof(fp)) {
         fgets(line,loadspc,fp);
         }
 
+fclose(fp);
 
+/* open shout channel */ 
+
+open_shout_channel();
 
 
 
@@ -908,7 +915,13 @@ for(room=room_first;room!=NULL;room=room->next) {
 		boot_exit(1);
 		}
 	}
-room=create_room();
+
+if ((room=create_room())==NULL) {
+        fprintf(stderr,"NUTS: unable to create room object.\n");
+	boot_exit(1);
+        }
+
+
 strcpy(room->label,wrd[0]);
 strcpy(room->name,wrd[0]);
 
@@ -1036,6 +1049,168 @@ strcpy(nl->verification,wrd[3]);
 }
 
 
+open_shout_channel()
+{
+FILE *fp;
+CH_OBJECT channel,ch;
+char filename[80],line[120],kw[20],*pun;
+int kw_code,name_flag=0,line_num=0;
+char *remove_first();
+char *keyword[]={
+"NAME", "LONG", "PHR", "PHRTO","JOIN","UNJOIN","END","*"
+};
+
+sprintf(filename,"%s/%s",DATAFILES,CHANNELCONFIG);
+
+if (!(fp=fopen(filename,"r"))) {
+	printf("No shout channel configured...\n");
+	return;
+	}
+
+line[0]='\0';
+fgets(line,82,fp);
+
+while (!feof(fp)) {
+	line_num++;
+	sscanf(line,"%s",kw);
+	printf("%s\n",kw);
+	kw_code=0;
+	while(keyword[kw_code][0]!='*') {
+		if (!strcmp(keyword[kw_code],kw))  break;
+		kw_code++;
+		}
+	switch (kw_code) {
+		case 0:
+		if (name_flag) {
+			fprintf(stderr,"NUTS: Missing channel END Keyword in line %d\n",line_num);
+			boot_exit(1);
+			}
+		sscanf(line,"%*s %s",text);
+		if (strlen(text)>WORD_LEN) {
+                        fprintf(stderr,"NUTS: Channel name too long in line %d\n",line_num);
+                        boot_exit(1);
+                        }
+		if (text[0]=='\0') {
+			fprintf(stderr,"NUTS: Channel name not specified in line %d\n",line_num);
+			boot_exit(1);
+			}
+		for(ch=ch_first;ch!=NULL;ch=ch->next) {
+			if (!(strcmp(ch->name,text))) {
+				fprintf(stderr,"NUTS: Duplicate channel name in line %d\n",line_num);
+				boot_exit(1);
+				}
+			}
+		if ((channel=create_channel())==NULL) {
+			fprintf(stderr,"NUTS: unable to create channel object.\n");
+			boot_exit(1);
+			}
+		strcpy(channel->name,text);
+		name_flag=1;
+		break;
+
+
+		case 1:
+		if (!name_flag) {
+			fprintf(stderr,"NUTS: Long name keyword but not open channel in line %d\n",line_num);
+			boot_exit(1);
+			}
+		pun=remove_first(line);
+		line[strlen(line)-1]=0;
+		if (strlen(pun)>PHRASE_LEN) {
+                        fprintf(stderr,"NUTS: Channel long name too long in line %d\n",line_num);
+                        boot_exit(1);
+			}
+		strcpy(channel->long_name,pun);
+		break;
+
+
+		case 2:
+		if (!name_flag) {
+			fprintf(stderr,"NUTS: Phrase keyword but not open channel in line %d\n",line_num);
+			boot_exit(1);
+			}
+		pun=remove_first(line);
+		line[strlen(line)-1]=0;
+		if (strlen(pun)>PHRASE_LEN) {
+                        fprintf(stderr,"NUTS: Channel phrase too long in line %d\n",line_num);
+                        boot_exit(1);
+			}
+		strcpy(channel->phrase,pun);
+		break;
+
+		case 3:
+		if (!name_flag) {
+			fprintf(stderr,"NUTS: Phraseto keyword but not open channel in line %d\n",line_num);
+			boot_exit(1);
+			}
+		pun=remove_first(line);
+		line[strlen(line)-1]=0;
+		if (strlen(pun)>PHRASE_LEN) {
+                        fprintf(stderr,"NUTS: Channel phraseto too long in line %d\n",line_num);
+                        boot_exit(1);
+			}
+		strcpy(channel->phraseto,pun);
+		break;
+
+		case 4:
+		if (!name_flag) {
+			fprintf(stderr,"NUTS: join keyword but not open channel in line %d\n",line_num);
+			boot_exit(1);
+			}
+		pun=remove_first(line);
+		line[strlen(line)-1]=0;
+		if (strlen(pun)>PHRASE_LEN*2) {
+                        fprintf(stderr,"NUTS: Channel join too long in line %d\n",line_num);
+                        boot_exit(1);
+			}
+		strcpy(channel->join,pun);
+		break;
+
+		case 5:
+		if (!name_flag) {
+			fprintf(stderr,"NUTS: unjoin keyword but not open channel in line %d\n",line_num);
+			boot_exit(1);
+			}
+		pun=remove_first(line);
+		line[strlen(line)-1]=0;
+		if (strlen(pun)>PHRASE_LEN*2) {
+                        fprintf(stderr,"NUTS: Channel unjoin too long in line %d\n",line_num);
+                        boot_exit(1);
+			}
+		strcpy(channel->unjoin,pun);
+		break;
+
+		case 6:
+		if (!name_flag) {
+			fprintf(stderr,"NUTS: end keyword but not open channel in line %d\n",line_num);
+			boot_exit(1);
+			}
+		if (channel->long_name[0]=='\0') 
+			strcpy(channel->long_name,channel->name);
+		if (channel->phrase[0]=='\0') 
+			strcpy(channel->phrase,"[canale %3] %1 dice: ");
+		if (channel->phraseto[0]=='\0') 
+			strcpy(channel->phraseto,"[canale %3] %1 dice a %2: ");
+		if (channel->join[0]=='\0') 
+			strcpy(channel->join,"[canale %3] %1 joina il canale");
+		if (channel->unjoin[0]=='\0') 
+			strcpy(channel->unjoin,"[canale %3] %1 lascia il canale");
+		name_flag=0;
+		printf("channel %s created\n",channel->name);
+		break;
+
+		default:		
+		fprintf(stderr,"NUTS: Unknown channel Keyword in line %d\n",line_num);
+		boot_exit(1);
+		}
+
+	line[0]='\0';
+	fgets(line,82,fp);
+	}
+
+fclose(fp);
+}
+
 yn_check(wd)
 char *wd;
 {
@@ -1108,8 +1283,6 @@ nl_first=NULL;
 nl_last=NULL;
 clear_words();
 time(&boot_time);
-for(i=0;i<REVSHOUT_LINES;++i) revshout[i][0]='\0';
-revline=0;
 }
 
 
@@ -1436,7 +1609,6 @@ for(u=user_first;u!=NULL;u=u->next) {
 	    || u->room==NULL 
 	    || (u->room!=rm && rm!=NULL) 
 	    || (u->ignall && !force_listen)
-	    || (u->ignshout && (com_num==SHOUT || com_num==SEMOTE))
 	    || u==user) continue;
 	if (u->type==CLONE_TYPE) {
 		if (u->clone_hear==CLONE_HEAR_NOTHING || u->owner->ignall) continue;
@@ -1469,7 +1641,6 @@ for(u=user_first;u!=NULL;u=u->next) {
             || u->room==NULL
             || (u->room!=rm && rm!=NULL)
             || (u->ignall && !force_listen)
-            || (u->ignshout && (com_num==SHOUT || com_num==SEMOTE))
             || u==user || u==user_b) continue;
         if (u->type==CLONE_TYPE) {
                 if (u->clone_hear==CLONE_HEAR_NOTHING || u->owner->ignall) continue;
@@ -1486,6 +1657,29 @@ for(u=user_first;u!=NULL;u=u->next) {
         else write_user(u,str);
         }
 }
+
+write_to_listener_users(str,channel)
+char *str;
+CH_OBJECT channel;
+{
+int i;
+UR_OBJECT u;
+
+for(u=user_first;u!=NULL;u=u->next) {
+	if (u->login 
+	    || u->room==NULL 
+	    || (u->ignall)) continue;
+	for (i=0;i<MAX_USER_CHANNEL;++i) if (u->channel[i]==channel) write_user(u,str);
+	}
+}
+
+
+
+
+
+
+
+
 
 
 /*** Write a string to system log ***/
@@ -1715,10 +1909,11 @@ UR_OBJECT user;
 FILE *fp;
 char *remove_first();
 char line[120],filename[80];
-int temp1,temp2,temp3,kw_code;
-char kw[20],*pun;
+int temp1,temp2,temp3,kw_code,i;
+char kw[20],*pun,temp[120];
+CH_OBJECT ch;
 char *keyword[]={
-"NAME","PASS","DATA","SITE","DESC","INPHR","OUTPHR","*"
+"NAME","PASS","DATA","SITE","DESC","INPHR","OUTPHR","CHAN","*"
 };
 
 sprintf(filename,"%s/%s.D",USERFILES,user->name);
@@ -1762,6 +1957,18 @@ while (!feof(fp)) {
 			line[strlen(line)-1]=0;
 			strcpy(user->out_phrase,pun);
 			break;
+		case 7: /* channel */
+			sscanf(line,"%*s %s",temp);
+			for (ch=ch_first;ch!=NULL;ch=ch->next) {
+				if (!(strcmp(ch->name,temp))) {
+					for(i=0;i<MAX_USER_CHANNEL;++i)
+						if (user->channel[i]==NULL) break;
+					if (i==MAX_USER_CHANNEL) break;
+					user->channel[i]=ch;
+					}
+				}
+			break;
+			
 		}
 	fgets(line,82,fp);
 	}
@@ -1779,6 +1986,7 @@ int save_current;
 {
 FILE *fp;
 char filename[80];
+int i;
 
 if (user->type==REMOTE_TYPE || user->type==CLONE_TYPE) return 0;
 sprintf(filename,"%s/%s.D",USERFILES,user->name);
@@ -1800,6 +2008,10 @@ else fprintf(fp,"SITE %s\n",user->last_site);
 fprintf(fp,"DESC %s\n",user->desc);
 fprintf(fp,"INPHR %s\n",user->in_phrase);
 fprintf(fp,"OUTPHR %s\n",user->out_phrase);
+for(i=0;i<MAX_USER_CHANNEL;++i) {
+	if (user->channel[i]==NULL) break;
+	fprintf(fp,"CHAN %s\n",user->channel[i]->name);
+	}
 fclose(fp);
 return 1;
 }
@@ -2229,13 +2441,14 @@ user->revline=(user->revline+1)%REVTELL_LINES;
 }
 
 /*** Records shouts and semotes ***/
-record_shout(str)
+record_shout(str,channel) 
 char *str;
+CH_OBJECT channel;
 {
-strncpy(revshout[revline],str,REVIEW_LEN);
-revshout[revline][REVIEW_LEN]='\n';
-revshout[revline][REVIEW_LEN+1]='\0';
-revline=(revline+1)%REVSHOUT_LINES;
+strncpy(channel->revshout[channel->revline],str,REVIEW_LEN);
+channel->revshout[channel->revline][REVIEW_LEN]='\n';
+channel->revshout[channel->revline][REVIEW_LEN+1]='\0';
+channel->revline=(channel->revline+1)%REVSHOUT_LINES;
 }
 
 
@@ -2937,14 +3150,6 @@ for(c=0;c<REVIEW_LINES;++c) rm->revbuff[c][0]='\0';
 rm->revline=0;
 }
 
-/*** Clear the shout review buffer ***/
-clear_revshout()
-{
-int c;
-for(c=0;c<REVSHOUT_LINES;++c) revshout[c][0]='\0';
-revline=0;
-}
-
 
 /*** Clear the screen ***/
 cls(user)
@@ -2990,7 +3195,7 @@ UR_OBJECT user;
 int i;
 
 if ((user=(UR_OBJECT)malloc(sizeof(struct user_struct)))==NULL) {
-	write_syslog("ERROR: Memory allocation failure in create_user().\n",0,TOSYS);
+	write_syslog("ERROR: Memory allocation failure in create_user().\n",1,TOSYS);
 	return NULL;
 	}
 
@@ -3035,7 +3240,6 @@ user->level=0;
 user->vis=1;
 user->ignall=0;
 user->ignall_store=0;
-user->ignshout=0;
 user->igntell=0;
 user->muzzled=0;
 user->remote_com=-1;
@@ -3061,6 +3265,7 @@ user->malloc_start=NULL;
 user->malloc_end=NULL;
 user->owner=NULL;
 for(i=0;i<REVTELL_LINES;++i) user->revbuff[i][0]='\0';
+for(i=0;i<MAX_USER_CHANNEL;++i) user->channel[i]=NULL;
 return user;
 }
 
@@ -3121,8 +3326,8 @@ RM_OBJECT room;
 int i;
 
 if ((room=(RM_OBJECT)malloc(sizeof(struct room_struct)))==NULL) {
-	fprintf(stderr,"NUTS: Memory allocation failure in create_room().\n");
-	boot_exit(1);
+	write_syslog("ERROR: Memory allocation failure in create_room().\n",1,TOSYS);
+	return NULL;
 	}
 room->name[0]='\0';
 room->label[0]='\0';
@@ -3222,6 +3427,66 @@ for(u=user_first;u!=NULL;u=u->next) {
 		}
 	}
 }
+
+
+
+
+
+/*** Construct room object ***/
+CH_OBJECT create_channel()
+{
+CH_OBJECT channel;
+int i;
+
+if ((channel=(CH_OBJECT)malloc(sizeof(struct channel_struct)))==NULL) {
+	write_syslog("ERROR: Memory allocation failure in create_channel().\n",1,TOSYS);
+	return NULL;
+	}
+channel->name[0]='\0';
+channel->long_name[0]='\0';
+channel->phrase[0]='\0';
+channel->phraseto[0]='\0';
+channel->join[0]='\0';
+channel->unjoin[0]='\0';
+for(i=0;i<REVSHOUT_LINES;++i) channel->revshout[i][0]='\0';
+channel->revline=0;
+channel->next=NULL;
+
+if (ch_first==NULL) ch_first=channel;
+else ch_last->next=channel;
+ch_last=channel;
+return channel;
+}
+
+
+
+destruct_channel(channel)
+CH_OBJECT channel;
+{
+CH_OBJECT prev,count;
+
+if (channel==ch_first) {
+        ch_first=channel->next;
+        free(channel);
+        return;
+        }
+
+for (count=ch_first;count!=NULL;count=count->next)
+        if (count->next==channel)  prev=count;
+
+if (channel==ch_last) {
+        ch_last=prev;
+        ch_last->next=NULL;
+        free(channel);
+        return;
+        }
+
+prev->next=channel->next;
+free(channel);
+}
+
+
+
 
 
 /************ NUTS PROTOCOL AND LINK MANAGEMENT FUNCTIONS ************/
@@ -4106,6 +4371,7 @@ char *inpstr;
 int i,len,ret,syntax;
 char filename[80],*comword=NULL;
 UR_OBJECT u;
+CH_OBJECT ch;
 
 com_num=-1;
 if (word[0][0]=='.') comword=(word[0]+1);
@@ -4118,10 +4384,8 @@ if (!comword[0]) {
 if (!strcmp(word[0],">")) strcpy(word[0],"tell");
 if (!strcmp(word[0],"<")) strcpy(word[0],"pemote");
 if (!strcmp(word[0],"-")) strcpy(word[0],"echo");
-if (!strcmp(word[0],"!")) strcpy(word[0],"shout");
 if (!strcmp(word[0],"+")) strcpy(word[0],"sto");
 if (inpstr[0]==';') strcpy(word[0],"emote");
-else if (inpstr[0]=='#') strcpy(word[0],"semote");
 	else inpstr=remove_first(inpstr);
 
 i=0;
@@ -4130,8 +4394,15 @@ while(command[i][0]!='*') {
 	if (!strncmp(command[i],comword,len)) {  com_num=i;  break;  }
 	++i;
 	}
+
 /* NEWADD */
 if (com_num==-1 && user->room!=NULL) {
+	for (ch=ch_first;ch!=NULL;ch=ch->next) 
+		if (!strcmp(ch->name,comword)) {
+			shout(user,inpstr,ch);
+			return;
+			}
+
 	if ((ret=search_for_macro(user,comword,0,&syntax))!=-1) {
 		user->filepos=ret;
 		if (!syntax) {
@@ -4233,10 +4504,8 @@ switch(com_num) {
 			}
 		say(user,inpstr);
 		break;
-	case SHOUT : shout(user,inpstr);  break;
 	case TELL  : tell(user,inpstr);   break;
 	case EMOTE : emote(user,inpstr);  break;
-	case SEMOTE: semote(user,inpstr); break;
 	case PEMOTE: pemote(user,inpstr); break;
 	case ECHO  : echo(user,inpstr);   break;
 	case GO    : go(user,inpstr);  break;
@@ -4331,7 +4600,6 @@ switch(com_num) {
 	case AFK   : afk(user,inpstr);  break;
 	case CLS   : cls(user);  break;
 	case COLOUR  : toggle_colour(user);  break;
-	case IGNSHOUT: toggle_ignshout(user);  break;
 	case IGNTELL : toggle_igntell(user);  break;
 	case SUICIDE : suicide(user);  break;
 	case DELETE  : delete_user(user,0);  break;
@@ -4350,8 +4618,6 @@ switch(com_num) {
 	case MACRO    : macro(user); break;
 	case SEE      :
 	case SEND     : send_banner(user); break;
-	case REVSH    : revsh(user); break;
-	case CLRSH    : clrsh(user); break;
 	default: write_user(user,"Command not executed in exec_com().\n");
 	}	
 }
@@ -4598,28 +4864,225 @@ record(user->room,text);
 
 
 /*** Shout something ***/
-shout(user,inpstr)
+shout(user,inpstr,channel)
 UR_OBJECT user;
 char *inpstr;
+CH_OBJECT channel;
 {
-char *name;
+UR_OBJECT u;
+char *name,*pun,*pun2;
+int i,cnt,line;
 
 if (user->muzzled) {
-	write_user(user,"You are muzzled, you cannot shout.\n");  return;
+	write_user(user,"You are muzzled, you cannot shout in a channel.\n"); return;
 	}
 if (word_count<2) {
-	write_user(user,"Shout what?\n");  return;
+	sprintf(text,"Channel %s:\n.%s <phrase> shout in the channel\n",channel->long_name,channel->name);
+	write_user(user,text);
+	sprintf(text,".%s ; <phrase> emote in the channel\n.%s + <user name> <phrase> shout to user in the channel\n",channel->name,channel->name);
+	write_user(user,text);  
+	sprintf(text,".%s -j join to the channel\n.%s -u unjoin the channel\n",channel->name,channel->name);
+	write_user(user,text);  
+	sprintf(text,".%s -l list the logged user who are connected to the channel\n",channel->name);
+	write_user(user,text);
+	sprintf(text,".%s -r review the buffer of the shout channel\n",channel->name);
+	write_user(user,text);
+	sprintf(text,".%s -c delete the buffer of the shout channel\n",channel->name);
+	write_user(user,text);
+	for (i=0;i<MAX_USER_CHANNEL;++i)
+		if (user->channel[i]==channel) break;
+	if (i==MAX_USER_CHANNEL) 
+		write_user(user,"Joined to the channel : NO\n");
+	else
+		write_user(user,"Joined to the channel : YES\n"); 
+	return;
 	}
+
+	if (word[1][0]=='-' && word[1][1]=='j') {
+		for(i=0;i<MAX_USER_CHANNEL;++i) {
+			if (user->channel[i]==channel) {
+				write_user(user,"You are already joined to this channel\n");
+				return;
+				}
+			if (user->channel[i]==NULL) break;
+			}
+		if (i==MAX_USER_CHANNEL) {
+        		write_user(user,"Sorry... no more channel free... Drop some channels to join a new one\n");
+        		return;
+		        }
+		user->channel[i]=channel;
+		if (user->vis) name=user->name; else name=invisname;
+		substitute(text,channel->join,name,"\0",channel->long_name);
+		strcat(text,"\n");
+		write_to_listener_users(text,channel);
+		record_shout(text,channel);
+		return;
+		}
+
+	if (word[1][0]=='-' && word[1][1]=='l') {
+		write_user(user,"Listener of this channel :\n\n");
+		for(u=user_first;u!=NULL;u=u->next) {
+			for (i=0;i<MAX_USER_CHANNEL;++i) {
+				if (u->channel[i]==channel) {
+					sprintf(text,"%s\n",u->name);
+					write_user(user,text);
+					}
+				}
+			}
+		return;
+		}
+
+for (i=0;i<MAX_USER_CHANNEL;++i)
+	if (user->channel[i]==channel) break;
+if (i==MAX_USER_CHANNEL) {
+	sprintf(text,"You are not joined to this channel...\nUse\n%s -j\nto join it\n",channel->name);
+	write_user(user,text);
+	return;
+	}
+
 if (ban_swearing && contains_swearing(inpstr)) {
 	write_user(user,noswearing);  return;
 	}
-sprintf(text,"~OLYou shout:~RS %s\n",inpstr);
-write_user(user,text);
+
+if (word[1][0]==';') {
+	inpstr=remove_first(inpstr);
+	if (user->vis) name=user->name; else name=invisname;
+	sprintf(text,"[Canale %s] %s %s\n",channel->long_name,name,inpstr);
+	write_to_listener_users(text,channel);
+	record_shout(text,channel);
+	return;
+	}
+
+if (word[1][0]=='+') {
+	if (!(u=get_user(word[2]))) {
+		write_user(user,notloggedon);  return;
+		}
+	for (i=0;i<MAX_USER_CHANNEL;++i)
+	        if (u->channel[i]==channel) break;
+	if (i==MAX_USER_CHANNEL) {
+		sprintf(text,"%s is not joined to this channel...\n",u->name);
+		write_user(user,text);
+		return;
+		}
+
+	inpstr=remove_first(remove_first(inpstr));
+	if (user->vis) name=user->name; else name=invisname;
+	substitute(text,channel->phraseto,name,u->name,channel->long_name);
+	strcat(text,inpstr);
+	strcat(text,"\n");
+	write_to_listener_users(text,channel);
+	record_shout(text,channel);
+	return;
+	}
+
+if (word[1][0]=='-') {
+	if (word[1][1]=='u') {
+		for(i=0;i<MAX_USER_CHANNEL;++i) {
+			if (user->channel[i]==channel) {
+                		for (cnt=i;cnt<MAX_USER_CHANNEL-1;++cnt)
+					user->channel[cnt]=user->channel[cnt+1];
+				user->channel[MAX_USER_CHANNEL-1]=NULL;
+				}
+                	}
+		if (user->vis) name=user->name; else name=invisname;
+		substitute(text,channel->unjoin,name,"\0",channel->long_name);
+		strcat(text,"\n");
+		write_to_listener_users(text,channel);
+		record_shout(text,channel);
+		sprintf(text,"Disconnected from channel %s\n",channel->long_name);
+		write_user(user,text);
+		return;
+		}
+
+	if (word[1][1]=='r') {
+		cnt=0;
+		for(i=0;i<REVSHOUT_LINES;++i) {
+		        line=(channel->revline+i)%REVSHOUT_LINES;
+		        if (channel->revshout[line][0]) {
+		                cnt++;
+		                if (cnt==1) {
+					sprintf(text,"\n~BB~FG*** Review buffer for the %s channel ***~RS\n\n",channel->long_name);
+					write_user(user,text);
+					}
+	        	        write_user(user,channel->revshout[line]);
+	        	        }
+	        	}
+		if (!cnt) write_user(user,"Review buffer is empty.\n");
+		else write_user(user,"\n~BB~FG*** End ***~RS\n\n");
+		return;
+		}
+
+	if (word[1][1]=='c') {
+		for(i=0;i<REVSHOUT_LINES;++i) channel->revshout[i][0]='\0';
+		channel->revline=0;
+		sprintf(text,"[canale %s] %s has cleared the review buffer\n",channel->long_name,user->name);
+		write_to_listener_users(text,channel);
+		return;
+		}
+	}
+
 if (user->vis) name=user->name; else name=invisname;
-sprintf(text,"~OL%s shouts:~RS %s\n",name,inpstr);
-write_room_except(NULL,text,user);
-record_shout(text);
+substitute(text,channel->phrase,name,"\0",channel->long_name);
+strcat(text,inpstr);
+strcat(text,"\n");
+write_to_listener_users(text,channel);
+record_shout(text,channel);
 }
+
+
+substitute(txt,pun2,var1,var2,var3)
+char *txt,*pun2,*var1,*var2,*var3;
+{
+char *pun;
+pun=txt;
+
+while (*pun2!='\0') {
+	if (*pun2=='%') {
+		if (*(pun2+1)=='1') {
+			*pun='\0';
+			strcat(txt,var1);
+			pun2+=2;
+			pun+=strlen(var1);
+			continue;
+			}
+		if (*(pun2+1)=='2') {
+			*pun='\0';
+			strcat(txt,var2);
+			pun2+=2;
+			pun+=strlen(var2);
+			continue;
+			}
+		if (*(pun2+1)=='3') {
+			*pun='\0';
+			strcat(txt,var3);
+			pun2+=2;
+			pun+=strlen(var3);
+			continue;
+			}
+		*pun='%';
+		}
+	else *pun=*pun2;
+	pun++;
+	pun2++;
+	}
+
+*pun='\0';
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 /*** Tell another user something ***/
@@ -4702,27 +5165,6 @@ if (inpstr[0]==';') sprintf(text,"%s%s\n",name,inpstr+1);
 else sprintf(text,"%s %s\n",name,inpstr);
 write_room(user->room,text);
 record(user->room,text);
-}
-
-
-/*** Do a shout emote ***/
-semote(user,inpstr)
-UR_OBJECT user;
-char *inpstr;
-{
-char *name;
-
-if (user->muzzled) {
-	write_user(user,"You are muzzled, you cannot emote.\n");  return;
-	}
-if (word_count<2 && inpstr[1]<33) {
-	write_user(user,"Shout emote what?\n");  return;
-	}
-if (user->vis) name=user->name; else name=invisname;
-if (inpstr[0]=='#') sprintf(text,"~OL!!~RS %s%s\n",name,inpstr+1);
-else sprintf(text,"~OL!!~RS %s %s\n",name,inpstr);
-write_room(NULL,text);
-record_shout(text);
 }
 
 
@@ -5339,8 +5781,12 @@ total=0;  invis=0;  remote=0;  logins=0;
 if (user->login) sprintf(text,"\n    *** Current users %s ***\n",long_date(1));
 else sprintf(text,"\n    ~BB*** Current users %s ***~RS\n",long_date(1));
 write_user(user,text);
-if (!people)
+if (!people) {
 write_user(user,"+------------------------------------------+------------------------------+\n");
+write_user(user,"|   Name                                   +  Where is                    |\n");
+write_user(user,"+------------------------------------------+------------------------------+\n");
+}
+
 if (people) write_user(user,"~FTName            : Level Line Ignall Visi Idle Mins  Port  Site/Service\n\n\r");
 for(u=user_first;u!=NULL;u=u->next) {
 	if (u->type==CLONE_TYPE) continue;
@@ -5386,7 +5832,7 @@ for(u=user_first;u!=NULL;u=u->next) {
 	strcat(text,"\n");
 	write_user(user,text);
 	}
-write_user(user,"+------------------------------------------+------------------------------+\n");
+if (!people) write_user(user,"+------------------------------------------+------------------------------+\n");
 sprintf(text,"\nThere are %d visible, %d invisible, %d remote users.\nTotal of %d users",num_of_users-invis,invis,remote,total);
 if (people) sprintf(text,"%s and %d logins.\n\n",text,logins);
 else strcat(text,".\n\n");
@@ -5819,7 +6265,7 @@ if (u->invite_room==NULL) strcpy(ir,"<nowhere>");
 else strcpy(ir,u->invite_room->name);
 sprintf(text,"Level       : %s\nIgnoring all: %s\n",level_name[u->path][u->level],noyes2[u->ignall]);
 write_user(user,text);
-sprintf(text,"Ign. shouts : %s\nIgn. tells  : %s\n",noyes2[u->ignshout],noyes2[u->igntell]);
+sprintf(text,"Ign. tells  : %s\n",noyes2[u->igntell]);
 write_user(user,text);
 if (u->type==REMOTE_TYPE || u->room==NULL) hs=0; else hs=1;
 sprintf(text,"On home site: %s\nVisible     : %s\n",noyes2[hs],noyes2[u->vis]);
@@ -6876,6 +7322,10 @@ FILE *fp;
 char filename[80],filename2[80],p[20],name[USER_NAME_LEN+1];
 int a,b,c,d,level;
 
+write_user(user,"Ban temporaneamente disabilitato\n");
+return;
+
+
 word[2][0]=toupper(word[2][0]);
 if (!strcmp(user->name,word[2])) {
 	write_user(user,"Trying to ban yourself is the seventh sign of madness.\n");
@@ -7729,18 +8179,6 @@ sprintf(text,"%s has cleared the review buffer.\n",name);
 write_room_except(user->room,text,user);
 }
 
-/*** Clear the review buffer ***/
-clrsh(user)
-UR_OBJECT user;
-{
-char *name;
-
-clear_revshout(); 
-write_user(user,"Shout Review buffer cleared.\n");
-if (user->vis) name=user->name; else name=invisname;
-sprintf(text,"%s has cleared the shout review buffer.\n",name);
-write_room_except(user->room,text,user);
-}
 
 #if 0
 
@@ -8134,18 +8572,6 @@ if (user->room==NULL) prompt(user);
 }
 
 
-toggle_ignshout(user)
-UR_OBJECT user;
-{
-if (user->ignshout) {
-	write_user(user,"You are no longer ignoring shouts and shout emotes.\n");  
-	user->ignshout=0;
-	return;
-	}
-write_user(user,"You are now ignoring shouts and shout emotes.\n");
-user->ignshout=1;
-}
-
 
 toggle_igntell(user)
 UR_OBJECT user;
@@ -8370,25 +8796,6 @@ for(i=0;i<REVTELL_LINES;++i) {
 		}
 	}
 if (!cnt) write_user(user,"Revtell buffer is empty.\n");
-else write_user(user,"\n~BB~FG*** End ***~RS\n\n");
-}
-
-/*** Show recorded tells and pemotes ***/
-revsh(user)
-UR_OBJECT user;
-{
-int i,cnt,line;
-
-cnt=0;
-for(i=0;i<REVSHOUT_LINES;++i) {
-	line=(revline+i)%REVSHOUT_LINES;
-	if (revshout[line][0]) {
-		cnt++;
-		if (cnt==1) write_user(user,"\n~BB~FG*** Revshout buffer ***~RS\n\n");
-		write_user(user,revshout[line]); 
-		}
-	}
-if (!cnt) write_user(user,"Revshout buffer is empty.\n");
 else write_user(user,"\n~BB~FG*** End ***~RS\n\n");
 }
 
@@ -8654,7 +9061,13 @@ if (!(strcmp(inpstr,"null"))) {
 	return;
 	}
 
-room=create_room();
+if ((room=create_room())==NULL) {
+	sprintf(text,"%s: unable to create room object.\n",syserror);
+	write_user(user,text);
+	write_syslog("ERROR: Unable to create room object in room_open()\n",1,TOSYS);
+	return;
+	}
+
 
 strcpy(room->name,inpstr);
 strcpy(room->label,inpstr);
