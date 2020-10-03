@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts42b.h"
+#include "nuts42a.h"
 
 #define VERSION "3.3.3"
 
@@ -1857,6 +1857,7 @@ switch(user->login) {
 	strcpy(user->desc,"hasn't used .desc yet");
 	strcpy(user->in_phrase,"enters");	
 	strcpy(user->out_phrase,"goes");	
+	strcpy(user->prompt_string,"~FT<%h, %l, %n %d>%i");
 	user->last_site[0]='\0';
 	user->level=0;
 	user->muzzled=0;
@@ -1893,6 +1894,7 @@ if (user->attempts==3) {
 	}
 user->login=4;
 user->pass[0]='\0';
+user->prompt_string[0]='\0';
 for (i=0;i<MAX_USER_CHANNEL;++i) user->channel[i]=NULL;
 for (i=0;i<MAX_USER_ALIAS;++i) user->alias[i][0]='\0';
 user->temp_room=room_first;
@@ -1915,9 +1917,9 @@ char kw[20],*pun,temp[120],tempa[120];
 int got_it=0,retval=0;
 CH_OBJECT ch;
 char *keyword[]={
-"NAME", "PASS",  "DATA", "SITE", "DESC",
-"INPHR","OUTPHR","CHAN", "ROOM", "ALIAS",
-"END", "*"
+"NAME", "PASS",  "DATA",  "SITE", "PROMPT",
+"DESC", "INPHR", "OUTPHR","CHAN", "ROOM", 
+"ALIAS","END",   "*"
 };
 
 sprintf(filename,"%s/%s",DATAFILES,USERDATA);
@@ -1963,28 +1965,35 @@ while (!feof(fp)) {
 			sscanf(line,"%*s %s\n",user->last_site);
 			break;
 
-		case 4: /* desc */
+		case 4: /* prompt */
+			if (!got_it) break;
+			pun=remove_first(line);
+			line[strlen(line)-1]=0;
+			strcpy(user->prompt_string,pun);
+			break;
+			
+		case 5: /* desc */
 			if (!got_it) break;
 			pun=remove_first(line);
 			line[strlen(line)-1]=0;
 			strcpy(user->desc,pun);
 			break;
 
-		case 5: /* inphr */
+		case 6: /* inphr */
 			if (!got_it) break;
 			pun=remove_first(line);
 			line[strlen(line)-1]=0;
 			strcpy(user->in_phrase,pun); 
 			break;
 
-		case 6: /* outphr */
+		case 7: /* outphr */
 			if (!got_it) break;
 			pun=remove_first(line);
 			line[strlen(line)-1]=0;
 			strcpy(user->out_phrase,pun);
 			break;
 
-		case 7: /* channel */
+		case 8: /* channel */
 			if (!got_it) break;
 			sscanf(line,"%*s %s",temp);
 			for (ch=ch_first;ch!=NULL;ch=ch->next) {
@@ -1997,7 +2006,7 @@ while (!feof(fp)) {
 				}
 			break;
 		
-		case 8: /* room */
+		case 9: /* room */
 			if (!got_it) break;
 			sscanf(line,"%*s %s",temp);
 			if ((user->temp_room=get_room(temp,NULL))==NULL ||
@@ -2005,7 +2014,7 @@ while (!feof(fp)) {
 				user->temp_room=room_first;
 			break;
 
-		case 9: /* alias */
+		case 10: /* alias */
 			sscanf(line,"%*s %s",temp);
 			if (!got_it) {
 				strcpy(tempa,user->name);
@@ -2022,11 +2031,12 @@ while (!feof(fp)) {
 			strcpy(user->alias[i],temp);
 			break;
 
-		case 10: /* end */
+		case 11: /* end */
 			if (!got_it) break;
 			fclose(fp);
 			return 1;
 			break;
+
 		}
 	fgets(line,82,fp);
 	}
@@ -2082,6 +2092,7 @@ while (!feof(fp)) {
 		fprintf(tmp,"%d %d %d %d %d %d %d %d %c\n",(int)user->read_mail,user->level,user->prompt,user->muzzled,user->charmode_echo,user->command_mode,user->colour,user->path,user->sex);
 		if (save_current) fprintf(tmp,"SITE %s\n",user->site);
 		else fprintf(tmp,"SITE %s\n",user->last_site);
+		fprintf(tmp,"PROMPT %s\n",user->prompt_string);
 		fprintf(tmp,"DESC %s\n",user->desc);
 		fprintf(tmp,"INPHR %s\n",user->in_phrase);
 		fprintf(tmp,"OUTPHR %s\n",user->out_phrase);
@@ -2668,7 +2679,8 @@ prompt(user)
 UR_OBJECT user;
 {
 int hr,min;
-char *str,*colour_com_strip();
+char *pun,*str,*colour_com_strip();
+char temp[120];
 
 if (no_prompt) return;
 if (user->type==REMOTE_TYPE) {
@@ -2682,13 +2694,54 @@ if (user->command_mode && !user->misc_op) {
 	return;  
 	}
 if (!user->prompt || user->misc_op) return;
+
+pun=user->prompt_string;
+text[0]='\0';
 hr=(int)(time(0)-user->last_login)/3600;
 min=((int)(time(0)-user->last_login)%3600)/60;
 str=colour_com_strip(user->desc);
 
-if (!user->vis)
-	sprintf(text,"~FT<%02d:%02d, %02d:%02d, %s %s +>\n",thour,tmin,hr,min,user->name,str);
-else sprintf(text,"~FT<%02d:%02d, %02d:%02d, %s %s>\n",thour,tmin,hr,min,user->name,str);
+if (*pun=='\0') strcpy(user->prompt_string,"~FT<%h, %l, %n %d>%i");
+
+
+while (*pun!='\0') {
+	if (*pun=='%') {
+		switch (*(pun+1)) {
+			case 'h' : 
+				sprintf(temp,"%02d:%02d",thour,tmin);
+				strcat(text,temp);
+				pun++;
+				break;
+			case 'l' :
+				sprintf(temp,"%02d:%02d",hr,min);
+				strcat(text,temp);
+				pun++;
+				break;
+			case 'n' :
+				strcat(text,user->name);
+				pun++;
+				break;
+			case 'd' :
+				strcat(text,user->desc);
+				pun++;
+				break;
+			case 'w' :
+				strcpy(temp,user->room->name);
+				delump(temp);
+				strcat(text,temp);
+				pun++;
+				break;
+			case 'i' :
+				strcat(text,"\n");
+				pun++;
+				break;
+			default : strcat(text,"%");
+			}
+		}
+	else strncat(text,pun,1);
+	pun++;
+	}
+
 write_user(user,text);
 }
 
@@ -3385,10 +3438,12 @@ user->login=0;
 user->socket=-1;
 user->attempts=0;
 user->command_mode=0;
+user->prompt_string[0]='\0';
 user->level=0;
 user->vis=1;
 user->ignall=0;
 user->ignall_store=0;
+user->ignbanner=0;
 user->igntell=0;
 user->muzzled=0;
 user->remote_com=-1;
@@ -10571,6 +10626,20 @@ if (!(strncmp(word[1],"alias",strlen(word[1])))) {
 		return;
 		}
 	set_alias(user,inpstr);
+	return;
+	}
+
+if (!(strncmp(word[1],"prompt",strlen(word[1])))) {
+	inpstr=remove_first(inpstr);
+	if (inpstr[0]=='\0') {
+		write_user(user,"specify your new prompt, please\n");
+		return;
+		}
+	if (strlen(inpstr)>USER_PROMPT_LEN) {
+		write_user(user,"Prompt string too long\n");
+		return;
+		}
+	strcpy(user->prompt_string,inpstr);
 	return;
 	}
 
