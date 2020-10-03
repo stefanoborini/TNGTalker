@@ -50,7 +50,7 @@ char *argv[];
 {
 fd_set readmask; 
 int i,len,counter;
-char inpstr[ARR_SIZE];
+char inpstr[1000];
 char temp[WORD_LEN+1];
 char *remove_first();
 UR_OBJECT user,next;
@@ -78,6 +78,7 @@ switch(fork()) {
 	case  0: break; /* child continues */
 	default: sleep(1); exit(0);  /* parent dies */
 	}
+
 reset_alarm();
 printf("\n*** Booted with PID %d ***\n\n",getpid());
 sprintf(text,"*** Booted successfully with PID %d %s ***\n\n",getpid(),long_date(1));
@@ -86,7 +87,6 @@ write_syslog(text,0,TOSYS);
 /**** Main program loop. *****/
 setjmp(jmpvar); /* jump to here if we crash and crash_action = IGNORE */
 while(1) {
-
 	/* set up mask then wait */
 	setup_readmask(&readmask);
 	if (select(FD_SETSIZE,&readmask,0,0,0)==-1) continue;
@@ -160,10 +160,10 @@ while(1) {
 			disconnect_user(user);  user=next;
 			continue;
 			}
-		printf("%d\n",len);
-
 		/* ignore control code replies */
-		if ((unsigned char)inpstr[0]==255) { user=next;  continue; }
+
+		if ((unsigned char)inpstr[0]==255) { user=next;  continue;}
+
 
 		/* Deal with input chars. If the following if test succeeds we
 		   are dealing with a character mode client so call function. */
@@ -1904,8 +1904,9 @@ switch(user->login) {
 	strcpy(user->shortcut[2],"-echo");
 	strcpy(user->shortcut[3],"+sto");
 	strcpy(user->shortcut[4],";emote");
+	user->id=get_first_unused_id();
 	save_user_details(user,1);
-	sprintf(text,"New user \"%s\" created.\n",user->name);
+	sprintf(text,"New user \"%s\" created with id %d.\n",user->name,user->id);
 	write_syslog(text,1,TOSYS);
 	connect_user(user);
 	}
@@ -1951,7 +1952,7 @@ CH_OBJECT ch;
 char *keyword[]={
 "NAME", "PASS",  "DATA",  "SITE", "PROMPT",
 "DESC", "INPHR", "OUTPHR","CHAN", "ROOM", 
-"SHORT", "ALIAS","END",   "*"
+"SHORT", "ALIAS","ID","END",   "*"
 };
 
 sprintf(filename,"%s/%s",DATAFILES,USERDATA);
@@ -2071,8 +2072,13 @@ while (!feof(fp)) {
 			if (i==MAX_USER_ALIAS) break;
 			strcpy(user->alias[i],temp);
 			break;
+		
+		case 12: /* id */
+			if (!got_it) break;
+			sscanf(line,"%*s %s",&user->id);
+			break;
 
-		case 12: /* end */
+		case 13: /* end */
 			if (!got_it) break;
 			fclose(fp);
 			return 1;
@@ -2150,7 +2156,7 @@ while (!feof(fp)) {
 			if (user->shortcut[i][0]=='\0') break;
 			fprintf(tmp,"SHORT %s\n",user->shortcut[i]);
 			}
-
+		fprintf(tmp,"ID %d\n",user->id);
 		fprintf(tmp,"END\n");
 		while (strncmp(line,"END",3)) fgets(line,82,fp);
 		fgets(line,82,fp);
@@ -2402,7 +2408,8 @@ switch(user->misc_op) {
 	if (toupper(inpstr[0])=='E'
 	    || more(user,user->socket,user->page_file)!=1) {
 		user->misc_op=user->misc_op_store;  user->filepos=0;  user->page_file[0]='\0';
-		prompt(user); 
+		special_prompt(user);
+		prompt(user);
 		}
 	return 1;
 
@@ -3147,6 +3154,41 @@ if (cnt>1) {
 return room;
 }
 
+get_first_unused_id()
+{
+FILE *fp;
+char filename[80],line[120],kw[WORD_LEN+1];
+int temp,high;
+
+sprintf(filename,"%s/%s",DATAFILES,USERDATA);
+if (!(fp=fopen(filename,"r"))) return 0;
+
+fgets(line,82,fp);
+
+while(!(feof(fp))) {
+        sscanf(line,"%s",kw);
+	if (!(strcmp(kw,"ID"))) {
+		sscanf(line,"%*s %d",&temp);
+		if (temp>high) high=temp;
+		}
+	fgets(line,82,fp);
+	}
+
+return (high+1);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /*** Return level value based on level name ***/
 get_level(name)
@@ -3527,6 +3569,9 @@ user->clone_hear=CLONE_HEAR_ALL;
 user->malloc_start=NULL;
 user->malloc_end=NULL;
 user->owner=NULL;
+user->newsgroup_temporary_int=0;
+user->newsgroup_opening_file[0]='\0';
+user->id=0;
 for(i=0;i<REVTELL_LINES;++i) user->revbuff[i][0]='\0';
 for(i=0;i<MAX_USER_CHANNEL;++i) user->channel[i]=NULL;
 for(i=0;i<MAX_USER_ALIAS;++i) user->alias[i][0]='\0';
@@ -5656,7 +5701,7 @@ if (word_count<2) {
 	}
 sprintf(text,"(%s) ",user->name);
 write_level(WIZ,1,text,NULL);
-sprintf(text,"- %s\n",inpstr);
+sprintf(text,"%s\n",inpstr);
 write_room(user->room,text);
 record(user->room,text);
 }
@@ -11448,16 +11493,17 @@ UR_OBJECT user;
 char *inpstr;
 {
 char filename[80];
+FILE *fp,*temp,*temp2;
+int line_number,message_number,filepos,num;
+char name[USER_NAME_LEN+1],subject[120];
+
 
 switch (user->submisc_op) {
 	case 0: break;
 	case 1:
 		switch(toupper(*inpstr)) {
 			case 'R' : 
-				write_user(user,"Read\n");
-				/*
-				user->submisc_op=1;
-				*/
+				user->prompt_op=2;
 				break;
 			case 'P' :
 				write_user(user,"Write\n");
@@ -11469,48 +11515,241 @@ switch (user->submisc_op) {
 				write_user(user,"\n ~BB~FW*** newsgroup available on the talker ***~RS\n\n");
 				sprintf(filename,"%s/%s",NGDIR,NGLIST);
 				switch(more(user,user->socket,filename)) {
-                        		case 0: write_user(user,"There are no newsgroups.\n");  
-						user->prompt_op=1;
-						user->submisc_op=0;
+                        		case 0: write_user(user,"There are no newsgroups.\n\n");  
 						break;
 
                         		case 1: user->misc_op_store=12;
 		                                user->misc_op=2;
-						user->prompt_op=0;
+						return;
 					}
 				break;
 
 			case 'E' :
-				write_user(user,"End\n");
-				user->misc_op=0;
-				user->submisc_op=0;
-				user->prompt_op=0;
-				prompt(user);
+				news_done(user);
 				return;
 			default:
 				user->prompt_op=1;
+				}
+		break;
+
+	case 2:
+		sprintf(filename,"%s/%s.list",NGDIR,inpstr);
+		if (!(fp=fopen(filename,"r"))) {
+			sprintf(text,"\nThe newsgroup %s does not exists\n\n",inpstr);
+			write_user(user,text);
+			user->prompt_op=1;
+			break;
+			}
+		line_number=0;
+		fgets(text,120,fp);
+		while (!(feof(fp))) {
+			line_number++;
+			fgets(text,120,fp);
+			}
+		fclose(fp);
+		sprintf(text,"\nNewsgroup %s opened, contains %d messages...\n\n",inpstr,line_number);
+		write_user(user,text);
+		strcpy(user->newsgroup_opening_file,inpstr);
+		user->newsgroup_temporary_int=line_number;
+		user->prompt_op=3;
+		break;
+
+	case 3:
+		switch(toupper(*inpstr)) {
+			case 'N' : 
+				user->prompt_op=4;
+				break;
+			case 'L' :
+				user->prompt_op=5;
+				break;
+			case 'M' :
+				user->prompt_op=1;
+				break;
+			default:
+				user->prompt_op=3;
+			}
+		break;
+
+	case 4:
+		message_number=atoi(inpstr);
+		if (message_number<1 || message_number>user->newsgroup_temporary_int) {
+			write_user(user,"\ninvalid value\n\n");
+			user->prompt_op=3;
+			break;
+			}
+
+		sprintf(filename,"%s/%s.list",NGDIR,user->newsgroup_opening_file);
+		if (!(fp=fopen(filename,"r"))) {
+			write_user(user,"~FW~OLERROR: Access trouble in case 4 of gestore_news()\n");
+			write_syslog("ERROR: Access trouble in case 4 of gestore_news()\n",1,TOSYS);
+			news_done(user);
+			}
+		fgets(text,120,fp);
+		while (!feof(fp)) {
+			parse_nlist_line(text,&filepos,&num,name,subject);
+			if (num==message_number) {
+				sprintf(filename,"%s/%s",USERFILES,user->newsgroup_opening_file);
+				if (!(temp2=fopen(filename,"r"))) {
+					write_user(user,"ERROR: can't open newsgroup file\n");
+					write_syslog("ERROR: can't open newsgroup file in gestore_news case 4\n");
+					fclose(fp);
+					news_done(user);
+					}
+				sprintf(filename,"%s/%d.temp",USERFILES,user->id);
+				if (!(temp=fopen(filename,"w"))) {
+					write_user(user,"ERROR: can't open temporary file\n");
+					write_syslog("ERROR: can't open temporary file in gestore_news case 4\n");
+					fclose(fp);
+					fclose(temp2);
+					news_done(user);
+					}
+				fseek(temp2,filepos,0);
+				fgets(text,120,temp2);
+				while (text[0]!='\n') {
+					fputs(text,temp);
+					fgets(text,120,temp2);
+					}
+				fclose(temp);
+				fclose(temp2);
+				fclose(fp);
+                                switch(more(user,user->socket,filename)) {
+                                        case 1: user->misc_op_store=12;
+                                                user->misc_op=2;
+                                                return;
+                                        }
+			fgets(text,120,fp);
 			}
 		}
+		
 
-switch (user->prompt_op) {
-	case 0: break;
-	case 1:
-		write_user(user,"~FT(R)ead, (P)ost, (L)ist newsgroup, (E)nd > ");
-		user->submisc_op=1; /* attendi la scelta */
-		return;
-	}
+		/* 
 
+D		prende su il nome del newsgroup 
+
+D		esiste?
+D			si:
+D				chiede se si vuole accedere direttamente al numero, se
+D				si vuole accedere alla lista o se si vuole tornare al
+D				menu' principale
+D
+D				numero?
+d					chiede il numero di messaggio
+d					mostra il messaggio
+d					chiede 
+					reply?
+						si: avvia l'editor
+					ritorna alla richiesta numero o lista
+
+				lista?
+					chiede il metodo di sorting (tempo o subject)
+					chiede da quale messaggio bisogna iniziare la lista
+					scrive la lista
+					rifa' il prompt.
+D			no:
+D				scrive che non esiste
+D				ritorna al prompt 1
+
+		*/
+
+		}
+
+special_prompt(user);
 }
 
 
 
 
+special_prompt(user)
+UR_OBJECT user;
+{
+
+switch (user->prompt_op) {
+	case 0: break;
+	case 1:
+		write_user(user,"~FT(R)ead, (P)ost, (L)ist newsgroup, (E)nd > ");
+		user->submisc_op=1;
+		return;
+	case 2: write_user(user,"~FTEnter newsgroup name >");
+		user->submisc_op=2;
+		return;
+	case 3: write_user(user,"~FTDo you want to :\n");
+		write_user(user,"~FTaccess by (~OLN~RS)umber?\n~FTget a (~OLL~RS)ist?\n~FTreturn to main (~OLM~FT)enu?\n~FTSelect (N,L,M)?");
+		user->submisc_op=3;
+		return;
+	case 4: write_user(user,"Message number > ");
+		user->submisc_op=4;
+		return;
+	case 5: write_user(user,"Sort by (P)ost order or (S)ubject > ");
+		user->submisc_op=5;
+		return;
 
 
+	}
+
+}
 
 
+news_done(user)
+UR_OBJECT user;
+{
+write_user(user,"Exiting from newsgroup interface...\n\n");
+user->misc_op=0;
+user->submisc_op=0;
+user->prompt_op=0;
+user->newsgroup_temporary_int=0;
+user->newsgroup_opening_file[0]='\0';
+prompt(user);
+}
 
 
+parse_nlist_line(text,filepos,num,name,subject)
+char *text,*name,*subject;
+int *num,*filepos;
+{
+char *pun,*pun2;
+char temp[120];
+
+pun=text;
+pun2=temp;
+
+while (*pun!=':') {
+	*pun2=*pun;
+	pun2++;
+	pun++;
+	}
+
+*(pun2+1)='\0';
+pun++;
+pun2=temp;
+
+*filepos=atoi(temp);
+
+while (*pun!=':') {
+	*pun2=*pun;
+	pun2++;
+	pun++;
+	}
+
+*(pun2+1)='\0';
+pun++;
+pun2=temp;
+
+*num=atoi(temp);
+
+
+while (*pun!=' ') {
+	*pun2=*pun;
+	pun2++;
+	pun++;
+	}
+
+*(pun2+1)='\0';
+pun++;
+pun2=temp;
+
+strcpy(name,temp);
+strcpy(subject,pun);
+}
 
 
 
