@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts42a.h"
+#include "nuts42b.h"
 
 #define VERSION "3.3.3"
 
@@ -4789,6 +4789,7 @@ switch(com_num) {
 	case UNSET    : unset_opt(user,inpstr); break;
 	case IGNBANNER: toggle_ignbanner(user); break;
 	case SHCH     : shch_opt(user,inpstr); break;
+	case LIST     : list_opt(user); break;
 	default: write_user(user,"Command not executed in exec_com().\n");
 	}	
 }
@@ -10955,8 +10956,67 @@ fclose(fp);
 sprintf(filename,"%s/%s",DATAFILES,CHANNELCONFIG);
 
 rename("tempfile",filename);
+}
+
+list_opt(user)
+UR_OBJECT user;
+{
+int kw_code,i,cnt;
+char temp[80],temp2[80];
+CH_OBJECT ch;
+char *keyword[]={
+"channels","*"
+};
+
+if (word_count<2) {
+	write_user(user,"usage: .list [channels]\n");
+	return;
+	}
+
+kw_code=0;
+
+while(keyword[kw_code][0]!='*') {
+	if (!strncmp(word[1],keyword[kw_code],strlen(word[1]))) break;
+	kw_code++;
+	}
+
+switch(kw_code) {
+	case 0:
+		write_user(user,"\n~BB~FG**** Shout Channels on the talker ****~RS\n\n");
+		cnt=0;
+		text[0]='\0';
+		for(ch=ch_first;ch!=NULL;ch=ch->next) {
+			sprintf(temp2,"(%s)",ch->name);
+			sprintf(temp,"%-15s %-8s",colour_com_strip(ch->long_name),temp2);
+			strcat(text,temp);
+			if (cnt==2) {  
+				strcat(text,"\n");  
+				write_user(user,text);  
+				text[0]='\0';  cnt=-1;  
+				}
+			cnt++;
+			}
+		if (cnt) {
+			strcat(text,"\n");  
+			write_user(user,text);
+			}
+		break;
+	default: write_user(user,"Unknown option\n");
+	}
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 /**************************** EVENT FUNCTIONS ******************************/
 
