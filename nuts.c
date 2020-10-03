@@ -4410,9 +4410,6 @@ delump(tvar);
 if (rm->access & PRIVATE) sprintf(text,"\n~FTRoom: ~FR%s\n\n",tvar);
 else sprintf(text,"\n~FTRoom: ~FG%s\n\n",tvar);
 write_user(user,text);
-/*
-write_user(user,user->room->desc);
-*/
 
 sprintf(filename,"%s/%s.R",DATAFILES,rm->name);
 
@@ -8440,8 +8437,7 @@ write_to_one(user,inpstr,u)
 UR_OBJECT user,u;
 char *inpstr;
 {
-char type[10],type2[4],*name;
-
+char type[10],type2[4],*name,*name2;
 
 switch(inpstr[strlen(inpstr)-1]) {
      case '?': strcpy(type,"ask");  break;
@@ -8465,12 +8461,15 @@ if (u==user) {
 	return;
 	}
 
-sprintf(text,"You %s to %s: %s\n",type,u->name,inpstr);
+if (u->vis) name=u->name; else name=invisname;
+sprintf(text,"You %s to %s: %s\n",type,name,inpstr);
 write_user(user,text);
 if (user->vis) name=user->name; else name=invisname;
 sprintf(text,"%s %ss to ~OLyou~RS: %s\n",name,type,inpstr);
 write_user(u,text);
-sprintf(text,"%s %ss to %s: %s\n",name,type,u->name,inpstr);
+
+if (u->vis) name2=u->name; else name2=invisname;
+sprintf(text,"%s %ss to %s: %s\n",name,type,name2,inpstr);
 write_room_except2(user->room,text,user,u);
 record(user->room,text);
 }
