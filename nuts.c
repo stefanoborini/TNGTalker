@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts42a.h"
+#include "nuts42d.h"
 
 #define VERSION "3.3.3"
 
@@ -1057,7 +1057,7 @@ char filename[80],line[120],kw[20],*pun;
 int kw_code,name_flag=0,line_num=0;
 char *remove_first();
 char *keyword[]={
-"NAME", "LONG", "PHR", "PHRTO","JOIN","UNJOIN","END","*"
+"NAME", "LONG", "PHR", "PHRTO","JOIN","UNJOIN","CRASH","END","*"
 };
 
 sprintf(filename,"%s/%s",DATAFILES,CHANNELCONFIG);
@@ -1184,7 +1184,16 @@ while (!feof(fp)) {
 		strcpy(channel->unjoin,pun);
 		break;
 
-		case 6:
+		case 6: /* crash */
+		if (!name_flag) {
+			fprintf(stderr,"NUTS: CRASH keyword but no open channel in line %s\n",line_num);
+			boot_exit(1);
+			}
+		pun=remove_first(line);
+		channel->crash_level=atoi(pun);
+		break;
+
+		case 7: /* end */
 		if (!name_flag) {
 			fprintf(stderr,"NUTS: end keyword but not open channel in line %d\n",line_num);
 			boot_exit(1);
@@ -1213,6 +1222,12 @@ while (!feof(fp)) {
 	}
 
 fclose(fp);
+
+if (name_flag) {
+	fprintf(stderr,"NUTS: missing end keyword in line %d\n",line_num);
+	boot_exit(1);
+	}
+
 }
 
 yn_check(wd)
@@ -2722,7 +2737,7 @@ while (*pun!='\0') {
 				pun++;
 				break;
 			case 'd' :
-				strcat(text,user->desc);
+				strcat(text,str);
 				pun++;
 				break;
 			case 'w' :
@@ -3433,6 +3448,8 @@ user->filepos=0;
 user->read_mail=time(0);
 user->room=NULL;
 user->invite_room=NULL;
+user->invite_channel=NULL;
+user->temp_room=NULL;
 user->port=0;
 user->login=0;
 user->socket=-1;
@@ -3655,6 +3672,7 @@ channel->join[0]='\0';
 channel->unjoin[0]='\0';
 for(i=0;i<REVSHOUT_LINES;++i) channel->revshout[i][0]='\0';
 channel->revline=0;
+channel->crash_level=0;
 channel->next=NULL;
 
 if (ch_first==NULL) ch_first=channel;
@@ -5098,11 +5116,17 @@ CH_OBJECT channel;
 {
 UR_OBJECT u;
 char *name,*pun,*pun2;
-int i,cnt,line;
+int i,cnt,line,invite_level;
+
 
 if (user->muzzled) {
 	write_user(user,"You are muzzled, you cannot shout in a channel.\n"); return;
 	}
+
+if (channel->crash_level<ADVANCED) invite_level=ADVANCED;
+	else invite_level=channel->crash_level;
+
+
 if (word_count<2) {
 	sprintf(text,"Channel %s:\n.%s <phrase> shout in the channel\n",channel->long_name,channel->name);
 	write_user(user,text);
@@ -5116,6 +5140,15 @@ if (word_count<2) {
 	write_user(user,text);
 	sprintf(text,".%s -c delete the buffer of the shout channel\n",channel->name);
 	write_user(user,text);
+	if (user->level>=WIZ) {
+		sprintf(text,".%s -k <user name> kick the user out of the channel\n",channel->name);
+		write_user(user,text);
+		}
+	if (user->level>=invite_level) {
+		sprintf(text,".%s -i <user name> invite the user in the channel\n",channel->name);
+		write_user(user,text);
+		}
+
 	for (i=0;i<MAX_USER_CHANNEL;++i)
 		if (user->channel[i]==channel) break;
 	if (i==MAX_USER_CHANNEL) 
@@ -5125,42 +5158,54 @@ if (word_count<2) {
 	return;
 	}
 
-	if (word[1][0]=='-' && word[1][1]=='j') {
-		for(i=0;i<MAX_USER_CHANNEL;++i) {
-			if (user->channel[i]==channel) {
-				write_user(user,"You are already joined to this channel\n");
-				return;
-				}
-			if (user->channel[i]==NULL) break;
+if (word[1][0]=='-' && word[1][1]=='j') {
+	for(i=0;i<MAX_USER_CHANNEL;++i) {
+		if (user->channel[i]==channel) {
+			write_user(user,"You are already joined to this channel\n");
+			return;
 			}
-		if (i==MAX_USER_CHANNEL) {
-        		write_user(user,"Sorry... no more channel free... Drop some channels to join a new one\n");
-        		return;
-		        }
-		user->channel[i]=channel;
-		if (user->vis) name=user->name; else name=invisname;
-		substitute(text,channel->join,name,"\0",channel->long_name);
-		strcat(text,"\n");
-		write_to_listener_users(text,channel);
-		record_shout(text,channel);
+		if (user->channel[i]==NULL) break;
+		}
+
+
+	if (user->level<channel->crash_level && user->invite_channel!=channel) {
+		write_user(user,"Sorry... this channel is on invite only.\n");
 		return;
 		}
 
-	if (word[1][0]=='-' && word[1][1]=='l') {
-		write_user(user,"Listener of this channel :\n\n");
-		for(u=user_first;u!=NULL;u=u->next) {
-			for (i=0;i<MAX_USER_CHANNEL;++i) {
-				if (u->channel[i]==channel) {
-					sprintf(text,"%s\n",u->name);
-					write_user(user,text);
-					}
+
+	if (i==MAX_USER_CHANNEL) {
+       		write_user(user,"Sorry... no more channel free... Drop some channels to join a new one\n");
+       		return;
+	        }
+
+
+	user->channel[i]=channel;
+	if (user->invite_channel==channel) user->invite_channel=NULL;
+	if (user->vis) name=user->name; else name=invisname;
+	substitute(text,channel->join,name,"\0",channel->long_name);
+	strcat(text,"\n");
+	write_to_listener_users(text,channel);
+	record_shout(text,channel);
+	return;
+	}
+
+if (word[1][0]=='-' && word[1][1]=='l') {
+	write_user(user,"Listener of this channel :\n\n");
+	for(u=user_first;u!=NULL;u=u->next) {
+		for (i=0;i<MAX_USER_CHANNEL;++i) {
+			if (u->channel[i]==channel) {
+				sprintf(text,"%s\n",u->name);
+				write_user(user,text);
 				}
 			}
-		return;
 		}
+	return;
+	}
 
 for (i=0;i<MAX_USER_CHANNEL;++i)
 	if (user->channel[i]==channel) break;
+
 if (i==MAX_USER_CHANNEL) {
 	sprintf(text,"You are not joined to this channel...\nUse\n%s -j\nto join it\n",channel->name);
 	write_user(user,text);
@@ -5177,7 +5222,7 @@ if (word[1][0]==';') {
 		sprintf(text,"emote in channel %s what?\n",channel->long_name);
 		write_user(user,text);
 		return;
-		} 
+		}
 	if (user->vis) name=user->name; else name=invisname;
 	sprintf(text,"[Canale ~OL%s~RS] %s %s\n",channel->long_name,name,inpstr);
 	write_to_listener_users(text,channel);
@@ -5254,6 +5299,101 @@ if (word[1][0]=='-') {
 		channel->revline=0;
 		sprintf(text,"[canale %s] %s has cleared the review buffer\n",channel->long_name,user->name);
 		write_to_listener_users(text,channel);
+		return;
+		}
+
+	if (word[1][1]=='k' && user->level>=WIZ) {
+		if (word_count<3) {
+			write_user(user,"kick off who?\n");
+			return;
+			}
+
+		if (!(u=get_user(word[2]))) {
+			write_user(user,notloggedon);  return;
+			}
+
+		if (u==user) {
+			write_user(user,"Why do you want to kick out yourself?\n");
+			return;
+			}
+		if (u->level>=user->level) {
+			write_user(user,"You can't kick off a user of an equal or greater level than yourself\n");
+			return;
+			}
+
+
+		for (i=0;i<MAX_USER_CHANNEL;++i) {
+			if (u->channel[i]==channel) {
+				for (cnt=i;cnt<MAX_USER_CHANNEL-1;++cnt) 
+					u->channel[cnt]=u->channel[cnt+1];
+				u->channel[MAX_USER_CHANNEL-1]=NULL;
+
+				if (user->vis) name=user->name; else name=invisname;
+				sprintf(text,"%s kicked you out of the channel\n",name);
+				write_user(u,text);
+				write_user(user,"Kicked\n");
+				sprintf(text,"[canale ~OL%s~RS] %s has Kicked off %s\n",channel->long_name,user->name,u->name);
+				write_to_listener_users(text,channel);
+				write_syslog(text,1,TOSYS);
+				break;
+				}
+			}
+
+		if (i==MAX_USER_CHANNEL) {
+			sprintf(text,"%s is not joined to this channel...\n",u->name);
+			write_user(user,text);
+			return;
+			}
+		return;
+		}
+
+	if (word[1][1]=='i' && user->level>=invite_level) {
+		if (word_count<3) {
+			write_user(user,"Invite who?\n");
+			return;
+			}
+
+		if (!channel->crash_level) {
+			write_user(user,"The channel is not on invite.\n");
+			return;
+			}
+
+		if (!(u=get_user(word[2]))) {
+			write_user(user,notloggedon);
+			return;
+			}
+
+		if (u==user) {
+			write_user(user,"Inviting yourself in a channel is a sign of madness.\n");
+			return;
+			}
+
+		for(i=0;i<MAX_USER_CHANNEL;++i) {
+			if (u->channel[i]==channel) {
+				sprintf(text,"%s is already joined to this channel\n",u->name);
+				write_user(user,text);
+				return;
+				}
+			if (u->channel[i]==NULL) break;
+			}
+
+		if (i==MAX_USER_CHANNEL) {
+        		write_user(user,"Sorry... the user has no free channels...\n");
+        		return;
+		        }
+		
+		if (u->invite_channel==channel) {
+			sprintf(text,"%s has already been invited.\n",u->name);
+			write_user(user,text);
+			return;
+			}
+
+		sprintf(text,"[canale ~OL%s~RS] %s has invited %s\n",channel->long_name,user->name,u->name);
+		write_to_listener_users(text,channel);
+		write_syslog(text,1,TOSYS);
+		sprintf(text,"%s invites you on the channel %s\n",user->name,channel->long_name);
+		write_user(u,text);
+		u->invite_channel=channel;
 		return;
 		}
 	}
@@ -9440,7 +9580,7 @@ strcpy(room->name,inpstr);
 strcpy(room->label,inpstr);
 
 room->access=FIXED_PUBLIC;
-strcpy(room->maptype,"a");
+strcpy(room->maptype,"none");
 
 sprintf(text,"%s successfully created room %s \n",user->name,room->name);
 
@@ -9813,6 +9953,9 @@ for (u=user_first;u!=NULL;u=u->next) {
 		}
 	}
 
+for(u=user_first;u!=NULL;u=u->next) {
+	if (u->invite_room==victim) u->invite_room=NULL;
+	}
 
 for (room=room_first;room!=NULL;room=room->next) {
 	for(i=0;i<MAX_LINKS;++i) {
@@ -9983,7 +10126,7 @@ if (user==victim) {
         }
 
 if (victim->level>=user->level) {
-        write_user(user,"You cannot hulk a user of equal or higher level than yourself\nD");
+        write_user(user,"You cannot hulk a user of equal or higher level than yourself\n");
         sprintf(text,"%s tried to hulk you!\n",user->name);
         write_user(victim,text);
         return;
@@ -10793,15 +10936,15 @@ char *inpstr;
 {
 CH_OBJECT ch,tempch;
 UR_OBJECT u;
-int kw_code,i,cnt,exists=0;
+int kw_code,i,cnt,exists=0,num;
 char *keyword[]={
-"open","delete","examine","long","phr","to","join","unjoin","*"
+"open","delete","examine","long","phr","to","join","unjoin","crash","*"
 };
 char channame[WORD_LEN+1];
 
 if (word_count<3) {
 	write_user(user,"usage: .channel <channel name> <option> [options...]\n");
-	write_user(user,"where option can be : open, delete, examine, long, phr, to, join, unjoin\n");
+	write_user(user,"where option can be : open, delete, examine, long, phr, to, join, unjoin, crash\n");
 	return;
 	}
 
@@ -10851,19 +10994,25 @@ switch(kw_code) {
 			write_user(user,"this channel does not exists\n");
 			return;
 			}
+		if (user->level<ch->crash_level) {
+			write_user(user,"The channel is on invite and you haven't free access to it\n");
+			return;
+			}
+
 		strcpy(channame,ch->name);
 		for (u=user_first;u!=NULL;u=u->next) {
 			for (i=0;i<MAX_USER_CHANNEL;++i) {
 				if (u->channel[i]==ch) {
 					for (cnt=i;cnt<MAX_USER_CHANNEL-1;++cnt) {
 						u->channel[cnt]=u->channel[cnt+1];
-						u->channel[MAX_USER_CHANNEL-1]=NULL;
 						}
+					u->channel[MAX_USER_CHANNEL-1]=NULL;
 					sprintf(text,"Canale %s cancellato... auto unjoin effettuato\n",channame);
-					write_user(user,text);
+					write_user(u,text);
 					}
 				}
-			}				
+			if (u->invite_channel==ch) u->invite_channel=NULL;
+			}
 		destruct_channel(ch);
 		sprintf(text,"%s channel destructed\n",channame);
 		write_user(user,text);
@@ -10878,13 +11027,17 @@ switch(kw_code) {
 			}
 		sprintf(text,"Channel %s:\nLong name = %s\nPhrase = %s\n",ch->name,ch->long_name,ch->phrase);
 		write_user(user,text);
-		sprintf(text,"Phrase to = %s\nJoin = %s\nUnjoin = %s\n",ch->phraseto,ch->join,ch->unjoin);
+		sprintf(text,"Phrase to = %s\nJoin = %s\nUnjoin = %s\nCrash level= %d\n",ch->phraseto,ch->join,ch->unjoin,ch->crash_level);
 		write_user(user,text);
 		return;
 
 	case 3:
 		if (!exists) {
 			write_user(user,"this channel does not exists\n");
+			return;
+			}
+		if (user->level<ch->crash_level) {
+			write_user(user,"The channel is on invite and you haven't free access to it\n");
 			return;
 			}
 
@@ -10911,6 +11064,11 @@ switch(kw_code) {
 			write_user(user,"this channel does not exists\n");
 			return;
 			}
+		if (user->level<ch->crash_level) {
+			write_user(user,"The channel is on invite and you haven't free access to it\n");
+			return;
+			}
+
 		if (word_count<4) {
 			strcpy(ch->phrase,"[canale ~OL%3~RS] %1 dice: ");
 			break;
@@ -10930,6 +11088,10 @@ switch(kw_code) {
 	case 5:
 		if (!exists) {
 			write_user(user,"this channel does not exists\n");
+			return;
+			}
+		if (user->level<ch->crash_level) {
+			write_user(user,"The channel is on invite and you haven't free access to it\n");
 			return;
 			}
 		if (word_count<4) {
@@ -10954,6 +11116,10 @@ switch(kw_code) {
 			write_user(user,"this channel does not exists\n");
 			return;
 			}
+		if (user->level<ch->crash_level) {
+			write_user(user,"The channel is on invite and you haven't free access to it\n");
+			return;
+			}
 		if (word_count<4) {
 			strcpy(ch->join,"[canale ~OL%3~RS] %1 joina il canale");
 			break;
@@ -10970,9 +11136,14 @@ switch(kw_code) {
 		sprintf(text,"%s join phrase changed by %s\n",ch->name,user->name);
 		write_syslog(text,1,TOSYS);
 		break;
+
 	case 7:
 		if (!exists) {
 			write_user(user,"this channel does not exists\n");
+			return;
+			}
+		if (user->level<ch->crash_level) {
+			write_user(user,"The channel is on invite and you haven't free access to it\n");
 			return;
 			}
 		if (word_count<4) {
@@ -10992,6 +11163,36 @@ switch(kw_code) {
 		write_syslog(text,1,TOSYS);
 		break;
 
+	case 8:
+		if (!exists) {
+			write_user(user,"this channel does not exists\n");
+			return;
+			}
+		if (user->level<ch->crash_level) {
+			write_user(user,"The channel is on invite and you haven't free access to it\n");
+			return;
+			}
+		if (word_count<4) {
+			write_user(user,"Specify the channel crash level\n"); 
+			break;
+			}
+
+		num=atoi(word[3]);
+		if (num<0 || num>SYSOP) {
+			write_user(user,"invalid value\n");
+			return;
+			}
+		if (user->level<num) {
+			write_user(user,"You can't set a crash level higher than your level/n");
+			return;
+			}
+		sprintf(text,"%s crash level changed.\n",ch->name);
+		write_user(user,text);
+		sprintf(text,"%s crash level changed by %s from %d to %d\n",ch->name,user->name,ch->crash_level,num);
+		write_syslog(text,1,TOSYS);
+		ch->crash_level=num;
+		break;
+
 	default: write_user(user,"Unknown option\n");
 		return;
 	}
@@ -11005,10 +11206,20 @@ CH_OBJECT ch;
 FILE *fp;
 char filename[80];
 
+sprintf(filename,"%s/%s",DATAFILES,CHANNELCONFIG);
+
+if (ch_first==NULL) {
+	unlink(filename);
+	return;
+	}
+
+
 if (!(fp=fopen("tempfile","w"))) {
 	write_syslog("ERROR: unable to open tempfile in save_channels()\n",1,TOSYS);
 	return;
 	}
+
+	
 
 for (ch=ch_first;ch!=NULL;ch=ch->next) {
 	fprintf(fp,"NAME %s\n",ch->name);
@@ -11017,12 +11228,12 @@ for (ch=ch_first;ch!=NULL;ch=ch->next) {
 	fprintf(fp,"PHRTO %s\n",ch->phraseto);
 	fprintf(fp,"JOIN %s\n",ch->join);
 	fprintf(fp,"UNJOIN %s\n",ch->unjoin);
+	fprintf(fp,"CRASH %d\n",ch->crash_level);
 	fprintf(fp,"END\n");
 	}
 
 fclose(fp);
 
-sprintf(filename,"%s/%s",DATAFILES,CHANNELCONFIG);
 
 rename("tempfile",filename);
 }
@@ -11054,7 +11265,12 @@ switch(kw_code) {
 		write_user(user,"\n~BB~FG**** Shout Channels on the talker ****~RS\n\n");
 		cnt=0;
 		text[0]='\0';
+		if (ch_first==NULL) {
+			write_user(user,"\nNo shout channels configured\n");
+			return;
+			}
 		for(ch=ch_first;ch!=NULL;ch=ch->next) {
+			if (user->level<ch->crash_level) continue;
 			sprintf(temp2,"(%s)",ch->name);
 			sprintf(temp,"%-15s %-8s",colour_com_strip(ch->long_name),temp2);
 			strcat(text,temp);
