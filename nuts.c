@@ -441,8 +441,8 @@ word_count=0;
 load_and_parse_config()
 {
 FILE *fp;
-int loadspc=ROOM_LABEL_LEN+ROOM_NAME_LEN+MAX_LINKS*(ROOM_LABEL_LEN+1)+MAPTYPE_LEN+50;
-char line[ROOM_LABEL_LEN+ROOM_NAME_LEN+MAX_LINKS*(ROOM_LABEL_LEN+1)+MAPTYPE_LEN+50];
+int loadspc=ROOM_NAME_LEN+MAX_LINKS*(ROOM_NAME_LEN+1)+MAPTYPE_LEN+50;
+char line[ROOM_NAME_LEN+MAX_LINKS*(ROOM_NAME_LEN+1)+MAPTYPE_LEN+50];
 char c,filename[80];
 int i,section_in,got_init,got_rooms;
 RM_OBJECT rm1,rm2;
@@ -891,34 +891,26 @@ if (!wrd[2][0]) {
 	fprintf(stderr,"NUTS: Required parameter(s) missing on line %d.\n",config_line);
 	boot_exit(1);
 	}
-if (strlen(wrd[0])>ROOM_LABEL_LEN) {
-	fprintf(stderr,"NUTS: Room label too long on line %d.\n",config_line);
-	boot_exit(1);
-	}
-if (strlen(wrd[1])>ROOM_NAME_LEN) {
+if (strlen(wrd[0])>ROOM_NAME_LEN) {
 	fprintf(stderr,"NUTS: Room name too long on line %d.\n",config_line);
 	boot_exit(1);
 	}
-/* Check for duplicate label or name */
+/* Check for duplicate name */
 for(room=room_first;room!=NULL;room=room->next) {
-	if (!strcmp(room->label,wrd[0])) {
-		fprintf(stderr,"NUTS: Duplicate room label on line %d.\n",config_line);
-		boot_exit(1);
-		}
-	if (!strcmp(room->name,wrd[1])) {
+	if (!strcmp(room->name,wrd[0])) {
 		fprintf(stderr,"NUTS: Duplicate room name on line %d.\n",config_line);
 		boot_exit(1);
 		}
 	}
 room=create_room();
 strcpy(room->label,wrd[0]);
-strcpy(room->name,wrd[1]);
+strcpy(room->name,wrd[0]);
 
 /* Parse internal links bit ie hl,gd,of etc. MUST NOT be any spaces between
    the commas */
 i=0;
-ptr1=wrd[2];
-ptr2=wrd[2];
+ptr1=wrd[1];
+ptr2=wrd[1];
 while(1) {
 	while(*ptr2!=',' && *ptr2!='\0') ++ptr2;
 	if (*ptr2==',' && *(ptr2+1)=='\0') {
@@ -941,48 +933,48 @@ while(1) {
 	}
 
 
-if (!wrd[3][0]) {
+if (!wrd[2][0]) {
         fprintf(stderr,"NUTS: Missing map type in line %d",config_line);
         boot_exit(1);
         }
-if (strlen(wrd[3])>MAPTYPE_LEN) {
+if (strlen(wrd[2])>MAPTYPE_LEN) {
         fprintf(stderr,"NUTS: Maptype label too long il line %d",config_line);
         boot_exit(1);
         }
 
-strcpy(room->maptype,wrd[3]);
+strcpy(room->maptype,wrd[2]);
 
 
 
 /* Parse access privs */
-if (wrd[4][0]=='#') {  room->access=PUBLIC;  return;  }
-if (!wrd[4][0] || !strcmp(wrd[4],"BOTH")) room->access=PUBLIC; 
-else if (!strcmp(wrd[4],"PUB")) room->access=FIXED_PUBLIC; 
-	else if (!strcmp(wrd[4],"PRIV")) room->access=FIXED_PRIVATE;
+if (wrd[3][0]=='#') {  room->access=PUBLIC;  return;  }
+if (!wrd[3][0] || !strcmp(wrd[3],"BOTH")) room->access=PUBLIC; 
+else if (!strcmp(wrd[3],"PUB")) room->access=FIXED_PUBLIC; 
+	else if (!strcmp(wrd[3],"PRIV")) room->access=FIXED_PRIVATE;
 		else {
 			fprintf(stderr,"NUTS: Unknown room access type on line %d.\n",config_line);
 			boot_exit(1);
 			}
 /* Parse external link stuff */
-if (!wrd[5][0] || wrd[5][0]=='#') return;
-if (!strcmp(wrd[5],"ACCEPT")) {  
-	if (wrd[6][0] && wrd[6][0]!='#') {
+if (!wrd[4][0] || wrd[4][0]=='#') return;
+if (!strcmp(wrd[4],"ACCEPT")) {  
+	if (wrd[5][0] && wrd[5][0]!='#') {
 		fprintf(stderr,"NUTS: Unexpected word following ACCEPT keyword on line %d.\n",config_line);
 		boot_exit(1);
 		}
 	room->inlink=1;  
 	return;
 	}
-if (!strcmp(wrd[5],"CONNECT")) {
-	if (!wrd[6][0]) {
+if (!strcmp(wrd[4],"CONNECT")) {
+	if (!wrd[5][0]) {
 		fprintf(stderr,"NUTS: External link name missing on line %d.\n",config_line);
 		boot_exit(1);
 		}
-	if (wrd[7][0] && wrd[7][0]!='#') {
+	if (wrd[6][0] && wrd[6][0]!='#') {
 		fprintf(stderr,"NUTS: Unexpected word following external link name on line %d.\n",config_line);
 		boot_exit(1);
 		}
-	strcpy(room->netlink_name,wrd[6]);
+	strcpy(room->netlink_name,wrd[5]);
 	return;
 	}
 fprintf(stderr,"NUTS: Unknown connection option on line %d.\n",config_line);
@@ -8147,7 +8139,7 @@ char *inpstr;
 RM_OBJECT room;
 char tvar1[ROOM_NAME_LEN+1],tvar2[ROOM_NAME_LEN+1];
 
-if (strstr(inpstr,"&")) {
+if (strstr(inpstr,"_")) {
 	write_user(user,"the char _ is not admitted\n");
 	return;
 	}
@@ -8421,12 +8413,13 @@ UR_OBJECT user;
 char filename[80];
 char tempfile[20];
 FILE *fp, *temp;
-int loadspc=ROOM_LABEL_LEN+ROOM_NAME_LEN+MAX_LINKS*(ROOM_LABEL_LEN+1)+MAPTYPE_LEN+50;
-char line[ROOM_LABEL_LEN+ROOM_NAME_LEN+MAX_LINKS*(ROOM_LABEL_LEN+1)+MAPTYPE_LEN+50];
+int loadspc=ROOM_NAME_LEN+MAX_LINKS*(ROOM_NAME_LEN+1)+MAPTYPE_LEN+50;
+char
+line[ROOM_NAME_LEN+MAX_LINKS*(ROOM_NAME_LEN+1)+MAPTYPE_LEN+50];
 RM_OBJECT room;
 int i,flag;
 char *pun;
-char wd[8][MAX_LINKS*(ROOM_LABEL_LEN+1)];
+char wd[8][MAX_LINKS*(ROOM_NAME_LEN+1)];
 
 flag=0;
 
@@ -8466,8 +8459,8 @@ while(!feof(fp)) { /*while*/
         if (wd[0][0]=='#' || wd[0][0]=='\0') {
                 fgets(line,loadspc,fp); continue;
                 }
-        if (!(strcmp(room->name,wd[1]))) { /*if*/
-                sprintf(line,"%s %s ",room->label,room->name);
+        if (!(strcmp(room->name,wd[0]))) { /*if*/
+                sprintf(line,"%s ",room->name);
 
                 for (i=0;i<MAX_LINKS;++i) {
                         if (room->link[i]==NULL) break;
@@ -8487,9 +8480,9 @@ while(!feof(fp)) { /*while*/
                         case FIXED_PUBLIC: strcat(line," PUB "); break;
                         default: strcat(line," BOTH ");
                         }
-	if (!(strcmp("ACCEPT",wd[5]))) strcat(line," ACCEPT ");
-	if (!(strcmp("CONNECT",wd[5]))) {
-		strcat(line," CONNECT "); strcat(line,wd[6]);
+	if (!(strcmp("ACCEPT",wd[4]))) strcat(line," ACCEPT ");
+	if (!(strcmp("CONNECT",wd[4]))) {
+		strcat(line," CONNECT "); strcat(line,wd[5]);
 	        }
  	pun=line;
         while (*pun!='\0') pun++;
@@ -8505,7 +8498,7 @@ fgets(line,loadspc,fp);
 
 if (!flag) 
 {
-        sprintf(line,"%s %s ",room->label,room->name);
+        sprintf(line,"%s ",room->name);
         for (i=0;i<MAX_LINKS;++i) {
                 if (room->link[i]==NULL) break;
                 strcat(line,room->link[i]->label);

@@ -33,7 +33,6 @@
 #define PASS_LEN 20 /* only the 1st 8 chars will be used by crypt() though */
 #define BUFSIZE 1000
 #define ROOM_NAME_LEN 20
-#define ROOM_LABEL_LEN 20
 #define ROOM_DESC_LEN 810 /* 10 lines of 80 chars each + 10 nl */
 #define ROOM_LINES (ROOM_DESC_LEN/81)-1
 #define TOPIC_LEN 60
@@ -106,7 +105,7 @@ UR_OBJECT user_first,user_last;
 
 struct room_struct {
 	char name[ROOM_NAME_LEN+1];
-	char label[ROOM_LABEL_LEN+1];
+	char label[ROOM_NAME_LEN+1];
 	char desc[ROOM_DESC_LEN+1];
 	char topic[TOPIC_LEN+1];
 	char maptype[MAPTYPE_LEN+1];
@@ -116,7 +115,7 @@ struct room_struct {
 	int revline; /* line number for review */
 	int mesg_cnt;
 	char netlink_name[SERV_NAME_LEN+1]; /* temp store for config parse */
-	char link_label[MAX_LINKS][ROOM_LABEL_LEN+1]; /* temp store for parse */
+	char link_label[MAX_LINKS][ROOM_NAME_LEN+1]; /* temp store for parse */
 	struct netlink_struct *netlink; /* for net links, 1 per room */
 	struct room_struct *link[MAX_LINKS];
 	struct room_struct *next;
