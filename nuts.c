@@ -4083,6 +4083,7 @@ switch(com_num) {
 	case DOC     : document(user); break;
 	case ROOM    : room_opt(user,inpstr); break;
 	case PATH    : path(user); break;
+	case HULK    : hulk(user); break;
 	default: write_user(user,"Command not executed in exec_com().\n");
 	}	
 }
@@ -8584,11 +8585,100 @@ write_user(user,text);
 
 }
 
+hulk(user)
+UR_OBJECT user;
+{
+UR_OBJECT victim;
+RM_OBJECT rm;
+char *name;
+int i;
+char filename[80];
+char vicname[USER_NAME_LEN+1];
 
 
+if (word_count<2) {
+        write_user(user,"Usage: hulk <user>\n");  return;
+        }
+if (!(victim=get_user(word[1]))) {
+        write_user(user,notloggedon);  return;
+        }
+if (user==victim) {
+        write_user(user,"Trying to Hulk yourself is the n-th of madness\n");
+        return;
+        }
+
+if (victim->level>=user->level) {
+        write_user(user,"You cannot hulk a user of equal or higher level than yourself.\n");
+	sprintf(text,"%s tried to hulk you!\n",user->name);
+        write_user(victim,text);
+        return;
+        }
+
+rm=victim->room;
+strcpy(vicname,victim->name);
+
+sprintf(text,"%s HULKED %s.\n",user->name,vicname);
+write_syslog(text,1,TOSYS);
+write_user(user,"~FG~OLSenti una forza misteriosa crescere dentro di te...\n");
+write_user(user,"~FG~OLI tuoi vestiti si strappano...\n");
+write_user(user,"~FG~OLLa tua pelle diventa verde...\n");
+if (user->vis) name=user->name; else name=invisname;
+sprintf(text,"~FG~OL%s sente una forza misteriosa crescere dentro di se'...\n",name);
+write_room_except(user->room,text,user);
+write_room_except(user->room,"~OL~FGI suoi vestiti si strappano...\n",user);
+write_room_except(user->room,"~OL~FGLa sua pelle diventa verde...\n",user);
+if (user->room!=rm) {
+	sprintf(text,"~OL~FGHulk-%s parte per una missione spietata\n",user->name);
+	write_room_except(user->room,text,user);
+	}
+
+sprintf(text,"~OL~FGHulk-%s ti si para davanti, sfoderando i suoi poderosi muscoli\n",user->name);
+write_user(victim,text);
+
+sprintf(text,"~OL~FGHulk-%s si para davanti a %s, sfoderando i suoi poderosi muscoli\n",user->name,vicname);
+write_room_except2(rm,text,victim,user);
+sprintf(text,"~OL~FGTi pari davanti a %s, sfoderando i tuoi poderosi muscoli\n",vicname);
+write_user(user,text);
+for (i=0 ;i<5; i++) {
+	sprintf(text,"~OL~FGHulk-%s says to You: BRUTTO CATTIVO!!!!\n",user->name);
+	write_user(victim,text);
+	sprintf(text,"~OL~FGHulk-%s says to %s: BRUTTO CATTIVO!!!!\n",user->name,vicname);
+	write_room_except2(rm,text,victim,user);
+	sprintf(text,"~OL~FGYou say to %s: BRUTTO CATTIVO!!!!\n",vicname);
+	write_user(user,text);
+	}
+
+sprintf(text,"~OL~FGHulk-%s ti tira due malrovesci da paura...\n",user->name);
+write_user(victim,text);
+
+sprintf(text,"~OL~FGHulk-%s tira due malrovesci da paura a %s\n",user->name,vicname);
+write_room_except2(rm,text,victim,user);
+
+sprintf(text,"~OL~FGTiri due malrovesci da paura a %s\n",vicname);
+write_user(user,text);
+
+disconnect_user(victim);
+write_room(NULL,"~OL~FGSenti un urlo lacerante, di atroce sofferenza, e poi... il silenzio...\n");
+
+if (user->room!=rm) {
+	sprintf(text,"~OL~FGHulk-%s rientra con le mani insanguinate\n",user->name);
+	write_room_except(user->room,text,user);
+	}
+sprintf(text,"~OL~FGHulk-%s torna normale\n",user->name);
+write_room_except(user->room,text,user);
+write_user(user,"~OL~FGRitorni normale\n");
+sprintf(text,"~OL~FG%s ha compiuto la sua missione...\n",user->name);
+write_room_except(rm,text,user);
+
+sprintf(filename,"%s/%s.D",USERFILES,vicname);
+unlink(filename);
+sprintf(filename,"%s/%s.M",USERFILES,vicname);
+unlink(filename);
+sprintf(filename,"%s/%s.P",USERFILES,vicname);
+unlink(filename);
 
 
-
+}
 
 
 

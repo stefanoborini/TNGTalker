@@ -198,7 +198,7 @@ char *command[]={
 "rstat",   "swban",    "afk",       "cls",    "colour",
 "ignshout","igntell",  "suicide",   "delete", "reboot",
 "recount", "revtell",  "doc",  "sto", "room", "path", 
-"*"
+"hulk","*"
 };
 
 
@@ -225,7 +225,7 @@ MYCLONES, ALLCLONES,SWITCH,   CSAY,   CHEAR,
 */
 RSTAT,    SWBAN,    AFK,      CLS,    COLOUR,
 IGNSHOUT, IGNTELL,  SUICIDE,  DELETE, REBOOT,
-RECOUNT,  REVTELL,  DOC, STO, ROOM, PATH
+RECOUNT,  REVTELL,  DOC, STO, ROOM, PATH,HULK
 } com_num;
 
 
@@ -254,7 +254,7 @@ ARCH,USER,ARCH,ARCH,ARCH,
 WIZ, ARCH,USER,NEW ,NEW,
 USER,USER,NEW, GOD, GOD,
 GOD, USER,USER,USER,ARCH,
-WIZ
+WIZ,ARCH
 };
 
 /* 
