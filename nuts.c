@@ -38,7 +38,7 @@
 #include <setjmp.h>
 #include <errno.h>
 
-#include "nuts429.h"
+#include "nuts428.h"
 
 #define VERSION "3.3.3"
 
@@ -123,21 +123,6 @@ while(1) {
 			continue;
 			}
 		inpstr[len]='\0'; 
-
-/****************************************************
-
-
-   punto di controllo per l'ingresso di netlink...
-
-     decommentare per utilizzare
-
-		if (user_first!=NULL) {
-			write_user(user_first,inpstr);
-			sprintf(text,"0.%s\n 1.%s\n 2.%s\n 3.%s\n",word[0],word[1],word[2],word[3]);
-			write_user(user_first,text);
-			}
-
-************************************************/
 		exec_netcom(nl,inpstr);
 		}
 
@@ -350,6 +335,8 @@ return site;
 }
 
 
+
+
 /*** See if users site is banned ***/
 site_banned(site)
 char *site;
@@ -367,26 +354,6 @@ while(!feof(fp)) {
 fclose(fp);
 return 0;
 }
-
-
-/*** See if user is banned ***/
-user_banned(name)
-char *name;
-{
-FILE *fp;
-char line[82],filename[80];
-
-sprintf(filename,"%s/%s",DATAFILES,USERBAN);
-if (!(fp=fopen(filename,"r"))) return 0;
-fscanf(fp,"%s",line);
-while(!feof(fp)) {
-	if (!strcmp(line,name)) {  fclose(fp);  return 1;  }
-	fscanf(fp,"%s",line);
-	}
-fclose(fp);
-return 0;
-}
-
 
 /*** Attempt to get '\n' terminated line of input from a character
      mode client else store data read so far in user buffer. ***/
@@ -1692,7 +1659,6 @@ switch (fil) {
         case TOSYS : sprintf(filename,"%s/%s.log",LOGDIR,SYSLOG); break;
         case TOACCOUNT: sprintf(filename,"%s/%s.log",LOGDIR,ACCOUNTFILE);break;
         case TOROOM   : sprintf(filename,"%s/%s.log",LOGDIR,ROOMFILE); break;
-	case TONICK   : sprintf(filename,"%s/%s.log",LOGDIR,NICKFILE); break;
         default: sprintf(filename,"%s/%s.log",LOGDIR,SYSLOG);
         }
 
@@ -1755,18 +1721,12 @@ switch(user->login) {
 			}
 		}
 	if (!allow_caps_in_name) strtolower(name);
-	name[0]=toupper(name[0]);
-	if (user_banned(name)) {
-		write_user(user,"\nYou are banned from this talker.\n\n");
-		disconnect_user(user);
-		sprintf(text,"Attempted login by banned user %s.\n",name);
-		write_syslog(text,1,TOSYS);
-		return;
-		}
+
+	
 	strcpy(user->name,name);
 	/* If user has hung on another login clear that session */
 	for(u=user_first;u!=NULL;u=u->next) {
-		if (u->login && u!=user && !strcmp(u->name,user->name)) {
+		if (u->login && u!=user && u->userid==user->userid) {
 			disconnect_user(u);  break;
 			}
 		}	
@@ -1784,6 +1744,14 @@ switch(user->login) {
 		write_user(user,"New user...\n");
 		}
 	else {
+		if (user->banned) {
+	                write_user(user,"\nYou are banned from this talker.\n\n");
+	                sprintf(text,"Attempted login by banned user %s.\n",user->name);
+	                write_syslog(text,1,TOSYS);
+	                disconnect_user(user);
+	                return;
+			}
+
 		if (user->port==port[1] && user->level<wizport_level) {
 			sprintf(text,"\nSorry, only users of level %s and above can log in on this port.\n\n",level_name[0][wizport_level]);
 			write_user(user,text);
@@ -1857,12 +1825,16 @@ switch(user->login) {
                 }
 	strcpy(user->desc,"hasn't used .desc yet");
 	strcpy(user->in_phrase,"enters");	
-	strcpy(user->out_phrase,"goes");	
+	strcpy(user->out_phrase,"goes");
+	strcpy(name,user->name);
+	user->name[0]=toupper(user->name[0]);
 	user->last_site[0]='\0';
 	user->level=0;
 	user->muzzled=0;
 	user->accreq=0;
 	user->command_mode=0;
+	user->banned=0;
+	user->userid=10;
 	user->prompt=prompt_def;
 	user->colour=colour_def;
 	user->charmode_echo=charecho_def;
@@ -1872,6 +1844,7 @@ switch(user->login) {
 	user->total_login=0;
 	user->last_login_len=0;
 	user->room=room_first;
+	strcpy(user->alias[0],name);
 	save_user_details(user,1);
 	sprintf(text,"New user \"%s\" created.\n",user->name);
 	write_syslog(text,1,TOSYS);
@@ -1896,9 +1869,11 @@ if (user->attempts==3) {
 	}
 user->login=4;
 user->pass[0]='\0';
+user->banned=0;
+user->userid=0;
 for (i=0;i<MAX_USER_CHANNEL;++i) user->channel[i]=NULL;
 for (i=0;i<MAX_USER_ALIAS;++i) user->alias[i][0]='\0';
-user->temp_room=room_first;
+user->room=room_first;
 write_user(user,"Give me a name: ");
 echo_on(user);
 }
@@ -1910,23 +1885,24 @@ load_user_details(user)
 UR_OBJECT user;
 {
 FILE *fp;
-RM_OBJECT room,get_room();
+RM_OBJECT get_room();
 char *remove_first();
-char line[120],filename[80],last_name[USER_NAME_LEN+1];
-int temp1,temp2,temp3,kw_code,i;
+char line[120],filename[80];
+int temp1,temp2,temp3,kw_code,i,last_end=0;
 char kw[20],*pun,temp[120],tempa[120];
-int got_it=0,retval=0;
+int got_it=0;
 CH_OBJECT ch;
 char *keyword[]={
 "NAME", "PASS",  "DATA", "SITE", "DESC",
 "INPHR","OUTPHR","CHAN", "ROOM", "ALIAS",
-"END", "*"
+"END", "USERID", "BANNED" "*"
 };
 
 sprintf(filename,"%s/%s",DATAFILES,USERDATA);
 if (!(fp=fopen(filename,"r"))) return 0;
 
 fgets(line,82,fp);
+strcpy(tempa,user->name);
 
 /* non molto ottimizzato ma funziona.. ci tornero' su quando avro'
  piu' tempo */
@@ -1940,13 +1916,9 @@ while (!feof(fp)) {
                	}
 	switch(kw_code) {
 		case 0: /* name */
-			sscanf(line,"%*s %s",temp);
-			strcpy(last_name,temp);
-			if (!(strcmp(temp,user->name))) {
-				got_it=1;
-				retval=1;
-				break;
-				}
+			if (!got_it) break;
+			sscanf(line,"%*s %s",user->name);
+			break;
 
 		case 1: /* password */
 			if (!got_it) break;
@@ -2003,19 +1975,17 @@ while (!feof(fp)) {
 		case 8: /* room */
 			if (!got_it) break;
 			sscanf(line,"%*s %s",temp);
-			if ((user->temp_room=get_room(temp,NULL))==NULL ||
-				user->temp_room->access==PRIVATE)
-				user->temp_room=room_first;
+			if ((user->room=get_room(temp,NULL))==NULL ||
+				user->room->access==PRIVATE)
+				user->room=room_first;
 			break;
 
 		case 9: /* alias */
 			sscanf(line,"%*s %s",temp);
 			if (!got_it) {
-				strcpy(tempa,user->name);
-				tempa[0]=tolower(tempa[0]);
 				if (!(strcmp(temp,tempa))) {
-					strcpy(user->name,last_name);
-					fseek(fp,0,0);
+					fseek(fp,last_end,0);
+					got_it=1;
 					}
 				break;
 				}
@@ -2026,16 +1996,28 @@ while (!feof(fp)) {
 			break;
 
 		case 10: /* end */
-			if (!got_it) break;
+			if (!got_it) {
+				last_end=ftell(fp);
+				break;
+				}
 			fclose(fp);
 			return 1;
+			break;
+		case 11: /* userid */
+			if (!got_it) break;
+			sscanf(line,"%*s %d",&user->userid);
+			break;
+
+		case 12: /* banned */
+			if (!got_it) break;
+			user->banned=1;
 			break;
 		}
 	fgets(line,82,fp);
 	}
 
 fclose(fp);
-return retval;
+return 0;
 }
 
 
@@ -2078,6 +2060,7 @@ while (!feof(fp)) {
 	sscanf(line,"%s %s",temp1,temp2);
 	if ( (!(strcmp(temp1,"NAME"))) && (!(strcmp(temp2,user->name))) ) {
 		fprintf(tmp,"NAME %s\n",user->name);
+		fprintf(tmp,"USERID %d\n",user->userid);
 		fprintf(tmp,"PASS %s\n",user->pass);
 		if (save_current)
 			fprintf(tmp,"DATA %d %d %d ",(int)time(0),(int)user->total_login,(int)(time(0)-user->last_login));
@@ -2096,6 +2079,7 @@ while (!feof(fp)) {
 			if (user->alias[i][0]=='\0') break;
 			fprintf(tmp,"ALIAS %s\n",user->alias[i]);
 			}
+		if (user->banned) fprintf(tmp,"BANNED\n");
 		fprintf(tmp,"ROOM %s\n",user->room->name);
 		fprintf(tmp,"END\n");
 		while (strncmp(line,"END",3)) fgets(line,82,fp);
@@ -2109,6 +2093,7 @@ while (!feof(fp)) {
 
 if (!flag) {
 	fprintf(tmp,"NAME %s\n",user->name);
+	fprintf(tmp,"USERID %d\n",user->userid);
 	fprintf(tmp,"PASS %s\n",user->pass);
 	if (save_current)
 		fprintf(tmp,"DATA %d %d %d ",(int)time(0),(int)user->total_login,(int)(time(0)-user->last_login));
@@ -2127,6 +2112,7 @@ if (!flag) {
 		if (user->alias[i][0]=='\0') break;
 		fprintf(tmp,"ALIAS %s\n",user->alias[i]);
 		}
+	if (user->banned) fprintf(tmp,"BANNED\n");
 	fprintf(tmp,"ROOM %s\n",user->room->name);
 	fprintf(tmp,"END\n");
 	}
@@ -2150,7 +2136,7 @@ char temp[30];
 
 /* See if user already connected */
 for(u=user_first;u!=NULL;u=u->next) {
-	if (user!=u && user->type!=CLONE_TYPE && !strcmp(user->name,u->name)) {
+	if (user!=u && user->type!=CLONE_TYPE && user->userid==u->userid) {
 		rm=u->room;
 		if (u->type==REMOTE_TYPE) {
 			write_user(u,"\n~FB~OLYou are pulled back through cyberspace...\n");
@@ -2209,11 +2195,7 @@ if (user->last_site[0]) {
 	}
 else sprintf(text,"Welcome %s...\n\n",user->name);
 write_user(user,text);
-if (user->temp_room==NULL) user->room=room_first;
-else {
-	user->room=user->temp_room;
-	user->temp_room=NULL;
-	}
+if (user->room==NULL) user->room=room_first;
 user->last_login=time(0); /* set to now */
 sprintf(text,"~FTYour level is:~RS~OL %s\n",level_name[user->path][user->level]);
 write_user(user,text);
@@ -2896,47 +2878,14 @@ pun=inp;
 }
 
 
-remove_from_user_list(name)
-char *name;
-{
-FILE *fp,*temp;
-char filename[80];
-char str[USER_NAME_LEN+1];
-
-sprintf(filename,"%s/%s.log",LOGDIR,NICKFILE);
-
-if (!(fp=fopen(filename,"r"))) {
-	write_syslog("ERROR: couldn't open file NICKFILE in remove_from_user_list()\n",1,TOSYS);
-	return;
-	}
-
-if (!(temp=fopen("tempfile","w"))) {
-	write_syslog("ERROR: couldn't open tempfile in remove_from_user_list()\n",1,TOSYS);
-	fclose(fp);
-        return;
-        }
-
-fscanf(fp,"%s",str);
-
-while(!feof(fp)) {
-	if (strcmp(str,name)) fprintf(temp,"%s\n",str);
-	fscanf(fp,"%s",str);
-	}
-
-fclose(fp);
-fclose(temp);
-
-rename("tempfile",filename);
-}
-
-
 remove_from_user_file(name)
 char *name;
 {
 FILE *fp,*tmp;
 char filename[80];
-char line[120];
-char temp1[20],temp2[120];
+char line[120],temp1[20],temp2[120];
+int last_end=0,got_it=0;
+
 
 sprintf(filename,"%s/%s",DATAFILES,USERDATA);
 
@@ -2955,15 +2904,32 @@ if (!(tmp=fopen("tempfile","w"))) {
 fgets(line,82,fp);
 
 while (!feof(fp)) {
-	sscanf(line,"%s %s",temp1,temp2);
-	if ( (!(strcmp(temp1,"NAME"))) && (!(strcmp(temp2,name))) ) {
-		while (strncmp(line,"END",3)) fgets(line,82,fp);
-	        fgets(line,82,fp);
+	if (line[0]=='\n' || line[0]=='\0') {
+		fgets(line,82,fp);
 		continue;
 		}
-	fprintf(tmp,"%s",line);
+
+	sscanf(line,"%s %s",temp1,temp2);
+
+	while (strncmp(line,"END",3)) {
+		if ( (!(strcmp(temp1,"ALIAS"))) && (!(strcmp(temp2,name))) ) got_it=1;
+		fgets(line,82,fp);
+		}
+
+	if (!got_it) {
+		fseek(fp,last_end,0);
+		fgets(line,82,fp);
+		while (strncmp(line,"END",3)) {
+			fprintf(tmp,"%s",line);
+			fgets(line,82,fp);
+			}
+		fprintf(tmp,"END");
+		}
+	else got_it=0;
+	last_end=ftell(fp);
 	fgets(line,82,fp);
 	}
+
 fclose (fp);
 fclose (tmp);
 
@@ -2971,41 +2937,30 @@ rename("tempfile",filename);
 
 }
 
-
-
-
-
-
-
-
 /*** Get user struct pointer from name ***/
 UR_OBJECT get_user(name)
 char *name;
 {
 UR_OBJECT u;
 int i;
-char namelow[USER_NAME_LEN+1];
 
-strcpy(namelow,name);
-
-name[0]=toupper(name[0]);
-
-/* Search for exact name */
+/* Search for exact alias */
 for(u=user_first;u!=NULL;u=u->next) {
 	if (u->login || u->type==CLONE_TYPE) continue;
-	if (!strcmp(u->name,name))  return u;
 	for (i=0;i<MAX_USER_ALIAS;++i) {
 		if (u->alias[i][0]=='\0') break;
-		if (!(strcmp(u->alias[i],namelow))) return u;
+		if (!(strcmp(u->alias[i],name))) return u;
 		}
 	}
 
-/* Search for close match name */
+/* Search for close match alias */
 for(u=user_first;u!=NULL;u=u->next) {
 	if (u->login || u->type==CLONE_TYPE) continue;
-	if (strstr(u->name,name))  return u;
+	for (i=0;i<MAX_USER_ALIAS;++i) {
+		if (u->alias[i][0]=='\0') break;
+		if (!(strncmp(u->alias[i],name,strlen(name)))) return u;
+		}
 	}
-
 
 return NULL;
 }
@@ -3134,7 +3089,7 @@ FILE *fp;
 int tm;
 char filename[80];
 
-sprintf(filename,"%s/%s.M",USERFILES,user->name);
+sprintf(filename,"%s/mail%d",USERFILES,user->userid);
 if (!(fp=fopen(filename,"r"))) return 0;
 fscanf(fp,"%d",&tm);
 fclose(fp);
@@ -3151,6 +3106,7 @@ char *to,*ptr;
 NL_OBJECT nl;
 FILE *infp,*outfp;
 char *c,d,*service,filename[80],line[DNL+1];
+UR_OBJECT u;
 
 /* See if remote mail */
 c=to;  service=NULL;
@@ -3179,8 +3135,11 @@ if (!(outfp=fopen("tempfile","w"))) {
 /* Write current time on first line of tempfile */
 fprintf(outfp,"%d\r",(int)time(0));
 
+strcpy(u->name,to);
+load_user_details(u);
+
 /* Copy current mail file into tempfile if it exists */
-sprintf(filename,"%s/%s.M",USERFILES,to);
+sprintf(filename,"%s/mail%d",USERFILES,u->userid);
 if (infp=fopen(filename,"r")) {
 	/* Discard first line of mail file. */
 	fgets(line,DNL,infp);
@@ -3400,6 +3359,8 @@ user->name[0]='\0';
 user->desc[0]='\0';
 user->sex='U';
 user->path=0;
+user->userid=0;
+user->banned=0;
 user->in_phrase[0]='\0'; 
 user->out_phrase[0]='\0';   
 user->afk_mesg[0]='\0';
@@ -3426,6 +3387,7 @@ user->vis=1;
 user->ignall=0;
 user->ignall_store=0;
 user->igntell=0;
+user->ignbanner=0;
 user->muzzled=0;
 user->remote_com=-1;
 user->netlink=NULL;
@@ -3882,8 +3844,9 @@ if (nl->allow==OUT) {
 	}
 if (strlen(name)>USER_NAME_LEN) name[USER_NAME_LEN]='\0';
 
-/* See if user is banned */
-if (user_banned(name)) {
+#if 0
+/* See if user is banned 
+if (user->banned) {
 	if (nl->ver_major==3 && nl->ver_minor>=3 && nl->ver_patch>=3) 
 		sprintf(text,"DENIED %s 9\n",name); /* new error for 3.3.3 */
 	else sprintf(text,"DENIED %s 6\n",name); /* old error to old versions */
@@ -3891,6 +3854,7 @@ if (user_banned(name)) {
 	return;
 	}
 
+#endif
 /* See if user already on here */
 if (u=get_user(name)) {
 	sprintf(text,"DENIED %s 5\n",name);
@@ -4847,7 +4811,7 @@ int ret;
 if (word[1][0] && direct_call) {
 	if (u=get_user(word[1])) {
 		if (u->room==user->room) {
-			sprintf(filename,"%s/%s.L",USERFILES,u->name);
+			sprintf(filename,"%s/look%d",USERFILES,u->userid);
 			if (!(ret=more(user,user->socket,filename)))
 				write_user(user,"Non vedi niente di particolarmente rilevante\n");
 			else if (ret==1) user->misc_op=2;
@@ -5113,7 +5077,7 @@ if (word_count<2) {
 			if (user->channel[i]==NULL) break;
 			}
 		if (i==MAX_USER_CHANNEL) {
-        		write_user(user,"Sorry... no more channel free... Drop some channels to join a new one\n");
+        		write_user(user,"Sorry... no more channels free... Drop some channels to join a new one\n");
         		return;
 		        }
 		user->channel[i]=channel;
@@ -5285,19 +5249,6 @@ while (*pun2!='\0') {
 *pun='\0';
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -8919,7 +8870,6 @@ if (this_user) {
 	unlink(filename);	
 	sprintf(filename,"%s/%s.L",USERFILES,name);
 	unlink(filename);	
-	remove_from_user_list(name);
 	remove_from_user_file(name);
 	return;
 	}
@@ -8964,7 +8914,6 @@ unlink(filename);
 sprintf(filename,"%s/%s.L",USERFILES,word[1]);
 unlink(filename);	
 
-remove_from_user_list(word[1]);
 remove_from_user_file(word[1]);
 sprintf(text,"\07~FR~OL~LIUser %s deleted!\n",word[1]);
 write_user(user,text);
@@ -9987,7 +9936,6 @@ unlink(filename);
 sprintf(filename,"%s/%s.L",USERFILES,vicname);
 unlink(filename);	
 
-remove_from_user_list(vicname);
 remove_from_user_file(vicname);
 }
 
