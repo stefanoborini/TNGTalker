@@ -1,10 +1,16 @@
 /****************** Header file for NUTS version 3.3.3 ******************/
 
-#define DATAFILES "datafiles"
+#define DATAFILES "datafiles"  
+#define FILEDIR   "filedir"   
+#define LOGDIR    "logdir"
+#define ROOMFILE  "roomfile"
+#define RESMAPTYPE "resmaptype"
+#define ACCOUNTFILE "accountfile"
 #define USERFILES "userfiles"
 #define HELPFILES "helpfiles"
 #define MAILSPOOL "mailspool"
 #define CONFIGFILE "config"
+#define ROOMCONFIG "roomconfig"
 #define NEWSFILE "newsfile"
 #define MAPFILE "mapfile"
 #define SITEBAN "siteban"
@@ -27,9 +33,11 @@
 #define PASS_LEN 20 /* only the 1st 8 chars will be used by crypt() though */
 #define BUFSIZE 1000
 #define ROOM_NAME_LEN 20
-#define ROOM_LABEL_LEN 5
+#define ROOM_LABEL_LEN 20
 #define ROOM_DESC_LEN 810 /* 10 lines of 80 chars each + 10 nl */
+#define ROOM_LINES (ROOM_DESC_LEN/81)-1
 #define TOPIC_LEN 60
+#define MAPTYPE_LEN 6
 #define MAX_LINKS 10
 #define SERV_NAME_LEN 80
 #define SITE_NAME_LEN 80
@@ -53,6 +61,13 @@
 #define ARCH 3
 #define GOD 4
 
+#define TOSYS 0
+#define TOACCOUNT 1
+#define TOROOM 2
+
+
+
+
 #define USER_TYPE 0
 #define CLONE_TYPE 1
 #define REMOTE_TYPE 2
@@ -67,6 +82,9 @@ struct user_struct {
 	char name[USER_NAME_LEN+1];
 	char desc[USER_DESC_LEN+1];
 	char pass[PASS_LEN+6];
+/***** nuove aggiunte *****/
+	char sex;
+/**************************/
 	char in_phrase[PHRASE_LEN+1],out_phrase[PHRASE_LEN+1];
 	char buff[BUFSIZE],site[81],last_site[81],page_file[81];
 	char mail_to[WORD_LEN+1],revbuff[REVTELL_LINES][REVIEW_LEN+2];
@@ -76,7 +94,7 @@ struct user_struct {
 	int vis,ignall,prompt,command_mode,muzzled,charmode_echo; 
 	int level,misc_op,remote_com,edit_line,charcnt,warned;
 	int accreq,last_login_len,ignall_store,clone_hear,afk;
-	int edit_op,colour,ignshout,igntell,revline;
+	int edit_op,colour,ignshout,igntell,revline,wrap;
 	time_t last_input,last_login,total_login,read_mail;
 	char *malloc_start,*malloc_end;
 	struct netlink_struct *netlink,*pot_netlink;
@@ -91,6 +109,7 @@ struct room_struct {
 	char label[ROOM_LABEL_LEN+1];
 	char desc[ROOM_DESC_LEN+1];
 	char topic[TOPIC_LEN+1];
+	char maptype[MAPTYPE_LEN+1];
 	char revbuff[REVIEW_LINES][REVIEW_LEN+2];
 	int inlink; /* 1 if room accepts incoming net links */
 	int access; /* public , private etc */
@@ -155,7 +174,7 @@ char *level_name[]={
 
 char *command[]={
 "quit",    "look",     "mode",      "say",    "shout",
-"tell",    "emote",    "semote",    "pemote", "echo",
+"tell",    "emote",     "semote", "pemote", "echo",
 "go",      "ignall",   "prompt",    "desc",   "inphr",
 "outphr",  "public",   "private",   "letmein","invite",
 "topic",   "move",     "bcast",     "who",    "people",
@@ -168,18 +187,21 @@ char *command[]={
 "vis",     "invis",    "site",      "wake",   "wizshout",
 "muzzle",  "unmuzzle", "map",       "logging","minlogin",
 "system",  "charecho", "clearline", "fix",    "unfix",
-"viewlog", "accreq",   "revclr",    "clone",  "destroy",
+"viewlog", "accreq",   "revclr",    
+/*
+"clone",  "destroy",
 "myclones","allclones","switch",    "csay",   "chear",
+*/
 "rstat",   "swban",    "afk",       "cls",    "colour",
 "ignshout","igntell",  "suicide",   "delete", "reboot",
-"recount", "revtell",  "*"
+"recount", "revtell",  "doc",  "sto", "room", "*"
 };
 
 
 /* Values of commands , used in switch in exec_com() */
 enum comvals {
 QUIT,     LOOK,     MODE,     SAY,    SHOUT,
-TELL,     EMOTE,    SEMOTE,   PEMOTE, ECHO,
+TELL,        EMOTE,    SEMOTE, PEMOTE,   ECHO,
 GO,       IGNALL,   PROMPT,   DESC,   INPHRASE,
 OUTPHRASE,PUBCOM,   PRIVCOM,  LETMEIN,INVITE,
 TOPIC,    MOVE,     BCAST,    WHO,    PEOPLE,
@@ -192,11 +214,14 @@ PROMOTE,  DEMOTE,   LISTBANS, BAN,    UNBAN,
 VIS,      INVIS,    SITE,     WAKE,   WIZSHOUT,
 MUZZLE,   UNMUZZLE, MAP,      LOGGING,MINLOGIN,
 SYSTEM,   CHARECHO, CLEARLINE,FIX,    UNFIX,
-VIEWLOG,  ACCREQ,   REVCLR,   CREATE, DESTROY,
+VIEWLOG,  ACCREQ,   REVCLR,   
+/*
+CREATE, DESTROY,
 MYCLONES, ALLCLONES,SWITCH,   CSAY,   CHEAR,
+*/
 RSTAT,    SWBAN,    AFK,      CLS,    COLOUR,
 IGNSHOUT, IGNTELL,  SUICIDE,  DELETE, REBOOT,
-RECOUNT,  REVTELL
+RECOUNT,  REVTELL,  DOC, STO, ROOM
 } com_num;
 
 
@@ -217,11 +242,14 @@ WIZ ,WIZ ,WIZ, ARCH,ARCH,
 ARCH,ARCH,WIZ, USER,WIZ,
 WIZ, WIZ, USER,GOD, GOD,
 WIZ, NEW, ARCH,GOD, GOD,
-WIZ ,NEW, USER,ARCH,ARCH,
+WIZ ,NEW, USER,
+/*
+ARCH,ARCH,
 ARCH,USER,ARCH,ARCH,ARCH,
+*/
 WIZ, ARCH,USER,NEW ,NEW,
 USER,USER,NEW, GOD, GOD,
-GOD, USER
+GOD, USER,USER,USER,ARCH
 };
 
 /* 
