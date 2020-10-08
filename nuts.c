@@ -1687,12 +1687,6 @@ switch(user->login) {
 	user->prompt=prompt_def;
 	user->colour=colour_def;
 	user->charmode_echo=charecho_def;
-	user->path=0;
-	user->read_mail=time(0);
-	user->last_login=time(0);
-	user->total_login=0;
-	user->last_login_len=0;
-
 	save_user_details(user,1);
 	sprintf(text,"New user \"%s\" created.\n",user->name);
 	write_syslog(text,1,TOSYS);
