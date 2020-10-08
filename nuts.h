@@ -1,7 +1,7 @@
 /****************** Header file for NUTS version 3.3.3 ******************/
 
-#define DATAFILES "datafiles"  
-#define FILEDIR   "filedir"   
+#define DATAFILES "datafiles"
+#define FILEDIR   "filedir"
 #define LOGDIR    "logdir"
 #define GLOBALMACRO  "gmacro"
 #define MACRODIR "macrodir"
@@ -51,9 +51,9 @@
 #define REVIEW_LINES 15
 #define REVTELL_LINES 15
 #define REVIEW_LEN 200
-/* DNL (Date Number Length) will have to become 12 on Sun Sep 9 02:46:40 2001 
+/* DNL (Date Number Length) will have to become 12 on Sun Sep 9 02:46:40 2001
    when all the unix timers will flip to 1000000000 :) */
-#define DNL 11 
+#define DNL 11
 
 #define PUBLIC 0
 #define PRIVATE 1
@@ -85,7 +85,7 @@
 #define CLONE_HEAR_SWEARS 1
 #define CLONE_HEAR_ALL 2
 
-/* The elements vis, ignall, prompt, command_mode etc could all be bits in 
+/* The elements vis, ignall, prompt, command_mode etc could all be bits in
    one flag variable as they're only ever 0 or 1, but I tried it and it
    made the code unreadable. Better to waste a few bytes */
 struct user_struct {
@@ -103,7 +103,7 @@ struct user_struct {
 	char afk_mesg[AFK_MESG_LEN+1],inpstr_old[REVIEW_LEN+1];
 	struct room_struct *room,*invite_room;
 	int type,port,site_port,login,socket,attempts,buffpos,filepos;
-	int vis,ignall,prompt,command_mode,muzzled,charmode_echo; 
+	int vis,ignall,prompt,command_mode,muzzled,charmode_echo;
 	int level,misc_op,remote_com,edit_line,charcnt,warned;
 	int accreq,last_login_len,ignall_store,clone_hear,afk;
 	int edit_op,colour,ignshout,igntell,revline,wrap;
@@ -139,8 +139,8 @@ RM_OBJECT room_first,room_last;
 RM_OBJECT create_room();
 
 /* Netlink stuff */
-#define UNCONNECTED 0 
-#define INCOMING 1 
+#define UNCONNECTED 0
+#define INCOMING 1
 #define OUTGOING 2
 #define DOWN 0
 #define VERIFYING 1
@@ -158,7 +158,7 @@ struct netlink_struct {
 	char mail_to[WORD_LEN+1];
 	char mail_from[WORD_LEN+1];
 	FILE *mailfile;
-	time_t last_recvd; 
+	time_t last_recvd;
 	int port,socket,type,connected;
 	int stage,lastcom,allow,warned,keepalive_cnt;
 	int ver_major,ver_minor,ver_patch;
@@ -216,14 +216,14 @@ char *command[]={
 "vis",     "invis",    "site",      "wake",   "wizshout",
 "muzzle",  "unmuzzle", "map",       "logging","minlogin",
 "system",  "charecho", "clearline", "fix",    "unfix",
-"viewlog", "accreq",   "revclr",    
+"viewlog", "accreq",   "revclr",
 /*
 "clone",  "destroy",
 "myclones","allclones","switch",    "csay",   "chear",
 */
 "rstat",   "swban",    "afk",       "cls",    "colour",
 "ignshout","igntell",  "suicide",   "delete", "reboot",
-"recount", "revtell",  "doc",       "sto",    "room", 
+"recount", "revtell",  "doc",       "sto",    "room",
 "path",    "level",    "hulk",      "undo",   "aspect",
 "join",    "macro",    "see",       "send",   "*"
 };
@@ -245,20 +245,20 @@ PROMOTE,  DEMOTE,   LISTBANS, BAN,    UNBAN,
 VIS,      INVIS,    SITE,     WAKE,   WIZSHOUT,
 MUZZLE,   UNMUZZLE, MAP,      LOGGING,MINLOGIN,
 SYSTEM,   CHARECHO, CLEARLINE,FIX,    UNFIX,
-VIEWLOG,  ACCREQ,   REVCLR,   
+VIEWLOG,  ACCREQ,   REVCLR,
 /*
 CREATE, DESTROY,
 MYCLONES, ALLCLONES,SWITCH,   CSAY,   CHEAR,
 */
 RSTAT,    SWBAN,    AFK,      CLS,    COLOUR,
 IGNSHOUT, IGNTELL,  SUICIDE,  DELETE, REBOOT,
-RECOUNT,  REVTELL,  DOC,      STO,    ROOM, 
+RECOUNT,  REVTELL,  DOC,      STO,    ROOM,
 PATH,     LEVEL,    HULK,     UNDO,   ASPECT,
 JOIN,     MACRO,    SEE,      SEND
 } com_num;
 
 
-/* These are the minimum levels at which the commands can be executed. 
+/* These are the minimum levels at which the commands can be executed.
    Alter to suit. */
 int com_level[]={
 NEW, NEW, NEW, NEW, USER,
@@ -287,7 +287,7 @@ USER,APPR,GOD, ARCH,APPR,
 APPR,USER,HELPER,HELPER
 };
 
-/* 
+/*
 Colcode values equal the following:
 RESET,BOLD,BLINK,REVERSE
 
@@ -332,7 +332,7 @@ char *offon[]={ "OFF","ON " };
 
 /* These MUST be in lower case - the contains_swearing() function converts
    the string to be checked to lower case before it compares it against
-   these. Also even if you dont want to ban any words you must keep the 
+   these. Also even if you dont want to ban any words you must keep the
    star as the first element in the array. */
 char *swear_words[]={
 "fuck","shit","cunt","*"
