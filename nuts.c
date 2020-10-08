@@ -50,7 +50,7 @@ char *argv[];
 {
 fd_set readmask; 
 int i,len,counter;
-char inpstr[1000];
+char inpstr[ARR_SIZE];
 char temp[WORD_LEN+1];
 char *remove_first();
 UR_OBJECT user,next;
@@ -78,7 +78,6 @@ switch(fork()) {
 	case  0: break; /* child continues */
 	default: sleep(1); exit(0);  /* parent dies */
 	}
-
 reset_alarm();
 printf("\n*** Booted with PID %d ***\n\n",getpid());
 sprintf(text,"*** Booted successfully with PID %d %s ***\n\n",getpid(),long_date(1));
@@ -87,6 +86,7 @@ write_syslog(text,0,TOSYS);
 /**** Main program loop. *****/
 setjmp(jmpvar); /* jump to here if we crash and crash_action = IGNORE */
 while(1) {
+
 	/* set up mask then wait */
 	setup_readmask(&readmask);
 	if (select(FD_SETSIZE,&readmask,0,0,0)==-1) continue;
@@ -161,9 +161,7 @@ while(1) {
 			continue;
 			}
 		/* ignore control code replies */
-
-		if ((unsigned char)inpstr[0]==255) { user=next;  continue;}
-
+		if ((unsigned char)inpstr[0]==255) { user=next;  continue; }
 
 		/* Deal with input chars. If the following if test succeeds we
 		   are dealing with a character mode client so call function. */
@@ -5701,7 +5699,7 @@ if (word_count<2) {
 	}
 sprintf(text,"(%s) ",user->name);
 write_level(WIZ,1,text,NULL);
-sprintf(text,"%s\n",inpstr);
+sprintf(text,"- %s\n",inpstr);
 write_room(user->room,text);
 record(user->room,text);
 }
