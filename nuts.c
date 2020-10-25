@@ -1187,13 +1187,13 @@ while (!feof(fp)) {
 		if (channel->long_name[0]=='\0') 
 			strcpy(channel->long_name,channel->name);
 		if (channel->phrase[0]=='\0') 
-			strcpy(channel->phrase,"[canale ~OL%3~RS] %1 dice: ");
+			strcpy(channel->phrase,"[canale %3] %1 dice: ");
 		if (channel->phraseto[0]=='\0') 
-			strcpy(channel->phraseto,"[canale ~OL%3~RS] %1 dice a %2: ");
+			strcpy(channel->phraseto,"[canale %3] %1 dice a %2: ");
 		if (channel->join[0]=='\0') 
-			strcpy(channel->join,"[canale ~OL%3~RS] %1 joina il canale");
+			strcpy(channel->join,"[canale %3] %1 joina il canale");
 		if (channel->unjoin[0]=='\0') 
-			strcpy(channel->unjoin,"[canale ~OL%3~RS] %1 lascia il canale");
+			strcpy(channel->unjoin,"[canale %3] %1 lascia il canale");
 		name_flag=0;
 		printf("channel %s created\n",channel->name);
 		break;
@@ -4961,7 +4961,7 @@ if (ban_swearing && contains_swearing(inpstr)) {
 if (word[1][0]==';') {
 	inpstr=remove_first(inpstr);
 	if (user->vis) name=user->name; else name=invisname;
-	sprintf(text,"[Canale ~OL%s~RS] %s %s\n",channel->long_name,name,inpstr);
+	sprintf(text,"[Canale %s] %s %s\n",channel->long_name,name,inpstr);
 	write_to_listener_users(text,channel);
 	record_shout(text,channel);
 	return;
