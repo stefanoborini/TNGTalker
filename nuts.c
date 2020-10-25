@@ -3380,6 +3380,7 @@ user->filepos=0;
 user->read_mail=time(0);
 user->room=NULL;
 user->invite_room=NULL;
+user->temp_room=NULL;
 user->port=0;
 user->login=0;
 user->socket=-1;
