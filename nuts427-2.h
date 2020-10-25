@@ -1,7 +1,7 @@
 /****************** Header file for NUTS version 3.3.3 ******************/
 
-#define DATAFILES "datafiles"
-#define FILEDIR   "filedir"
+#define DATAFILES "datafiles"  
+#define FILEDIR   "filedir"   
 #define LOGDIR    "logdir"
 #define GLOBALMACRO  "gmacro"
 #define MACRODIR "macrodir"
@@ -15,6 +15,7 @@
 #define MAILSPOOL "mailspool"
 #define CONFIGFILE "config"
 #define ROOMCONFIG "roomconfig"
+#define CHANNELCONFIG "channelconfig"
 #define NEWSFILE "newsfile"
 #define MAPFILE "mapfile"
 #define SITEBAN "siteban"
@@ -35,13 +36,13 @@
 
 #define USER_NAME_LEN 12
 #define USER_DESC_LEN 30
+#define MAX_USER_CHANNEL 10
 #define AFK_MESG_LEN 60
 #define PHRASE_LEN 40
 #define PASS_LEN 20 /* only the 1st 8 chars will be used by crypt() though */
 #define BUFSIZE 1000
 #define ROOM_NAME_LEN 30
-#define ROOM_DESC_LEN 810 /* 10 lines of 80 chars each + 10 nl */
-#define ROOM_LINES (ROOM_DESC_LEN/81)-1
+#define ROOM_LINES 9
 #define TOPIC_LEN 60
 #define MAPTYPE_LEN 6
 #define MAX_LINKS 10
@@ -50,10 +51,12 @@
 #define VERIFY_LEN 20
 #define REVIEW_LINES 15
 #define REVTELL_LINES 15
+#define REVSHOUT_LINES 15
 #define REVIEW_LEN 200
-/* DNL (Date Number Length) will have to become 12 on Sun Sep 9 02:46:40 2001
+
+/* DNL (Date Number Length) will have to become 12 on Sun Sep 9 02:46:40 2001 
    when all the unix timers will flip to 1000000000 :) */
-#define DNL 11
+#define DNL 11 
 
 #define PUBLIC 0
 #define PRIVATE 1
@@ -85,7 +88,7 @@
 #define CLONE_HEAR_SWEARS 1
 #define CLONE_HEAR_ALL 2
 
-/* The elements vis, ignall, prompt, command_mode etc could all be bits in
+/* The elements vis, ignall, prompt, command_mode etc could all be bits in 
    one flag variable as they're only ever 0 or 1, but I tried it and it
    made the code unreadable. Better to waste a few bytes */
 struct user_struct {
@@ -96,6 +99,7 @@ struct user_struct {
 	char sex;
 	int path;
 	char macro[USER_NAME_LEN+1];
+	struct channel_struct *channel[MAX_USER_CHANNEL];
 /**************************/
 	char in_phrase[PHRASE_LEN+1],out_phrase[PHRASE_LEN+1];
 	char buff[BUFSIZE],site[81],last_site[81],page_file[81];
@@ -103,10 +107,10 @@ struct user_struct {
 	char afk_mesg[AFK_MESG_LEN+1],inpstr_old[REVIEW_LEN+1];
 	struct room_struct *room,*invite_room;
 	int type,port,site_port,login,socket,attempts,buffpos,filepos;
-	int vis,ignall,prompt,command_mode,muzzled,charmode_echo;
+	int vis,ignall,prompt,command_mode,muzzled,charmode_echo; 
 	int level,misc_op,remote_com,edit_line,charcnt,warned;
 	int accreq,last_login_len,ignall_store,clone_hear,afk;
-	int edit_op,colour,ignshout,igntell,revline,wrap;
+	int edit_op,colour,igntell,revline;
 	time_t last_input,last_login,total_login,read_mail,mtime;
 	char *malloc_start,*malloc_end;
 	struct netlink_struct *netlink,*pot_netlink;
@@ -119,7 +123,6 @@ UR_OBJECT user_first,user_last;
 struct room_struct {
 	char name[ROOM_NAME_LEN+1];
 	char label[ROOM_NAME_LEN+1];
-	char desc[ROOM_DESC_LEN+1];
 	char topic[TOPIC_LEN+1];
 	char maptype[MAPTYPE_LEN+1];
 	char revbuff[REVIEW_LINES][REVIEW_LEN+2];
@@ -139,8 +142,8 @@ RM_OBJECT room_first,room_last;
 RM_OBJECT create_room();
 
 /* Netlink stuff */
-#define UNCONNECTED 0
-#define INCOMING 1
+#define UNCONNECTED 0 
+#define INCOMING 1 
 #define OUTGOING 2
 #define DOWN 0
 #define VERIFYING 1
@@ -158,7 +161,7 @@ struct netlink_struct {
 	char mail_to[WORD_LEN+1];
 	char mail_from[WORD_LEN+1];
 	FILE *mailfile;
-	time_t last_recvd;
+	time_t last_recvd; 
 	int port,socket,type,connected;
 	int stage,lastcom,allow,warned,keepalive_cnt;
 	int ver_major,ver_minor,ver_patch;
@@ -170,6 +173,23 @@ struct netlink_struct {
 typedef struct netlink_struct *NL_OBJECT;
 NL_OBJECT nl_first,nl_last;
 NL_OBJECT create_netlink();
+
+struct channel_struct {
+	char name[WORD_LEN+1];
+	char long_name[WORD_LEN+1];
+	char phrase[PHRASE_LEN+1];
+	char phraseto[PHRASE_LEN+1];
+	char join[PHRASE_LEN*2+1];
+	char unjoin[PHRASE_LEN*2+1];
+	char revshout[REVSHOUT_LINES][REVIEW_LEN+2];
+	int revline;
+	struct channel_struct *next;
+	};
+
+typedef struct channel_struct *CH_OBJECT;
+CH_OBJECT ch_first,ch_last;
+CH_OBJECT create_channel();
+
 
 char *syserror="Sorry, a system error has occured";
 char *nosuchroom="There is no such room.\n";
@@ -194,20 +214,20 @@ char *level_type[MAX_LEVEL_TYPE+1]={
 };
 
 char *emotions_array[]={
-"smiling", "with a grin","*"
+"smiling", "with a grin","bored","*"
 };
 
 char *emochar_array[]={
-":)","gr","*"
+":)","gr","bo","*"
 };
 
 char *command[]={
-"quit",    "look",     "mode",      "say",    "shout",
-"tell",    "emote",     "semote", "pemote", "echo",
+"quit",    "look",     "mode",      "say",
+"tell",    "emote",                 "pemote", "echo",
 "go",      "ignall",   "prompt",    "desc",   "inphr",
 "outphr",  "public",   "private",   "letmein","invite",
 "topic",   "move",     "bcast",     "who",    "people",
-"help",    "shutdown", "news",      "read",   "write",
+"help",    "sdown", "news",      "read",   "write",
 "wipe",    "search",   "review",    "home",   "status",
 "version", "rmail",    "smail",     "dmail",  "from",
 "entpro",  "examine",  "rmst",      "rmsn",   "netstat",
@@ -216,14 +236,14 @@ char *command[]={
 "vis",     "invis",    "site",      "wake",   "wizshout",
 "muzzle",  "unmuzzle", "map",       "logging","minlogin",
 "system",  "charecho", "clearline", "fix",    "unfix",
-"viewlog", "accreq",   "revclr",
+"viewlog", "accreq",   "revclr",    
 /*
 "clone",  "destroy",
 "myclones","allclones","switch",    "csay",   "chear",
 */
 "rstat",   "swban",    "afk",       "cls",    "colour",
-"ignshout","igntell",  "suicide",   "delete", "reboot",
-"recount", "revtell",  "doc",       "sto",    "room",
+           "igntell",  "suicide",   "delete", "reboot",
+"recount", "revtell",  "doc",       "sto",    "room", 
 "path",    "level",    "hulk",      "undo",   "aspect",
 "join",    "macro",    "see",       "send",   "*"
 };
@@ -231,8 +251,8 @@ char *command[]={
 
 /* Values of commands , used in switch in exec_com() */
 enum comvals {
-QUIT,     LOOK,     MODE,     SAY,    SHOUT,
-TELL,     EMOTE,    SEMOTE, PEMOTE,   ECHO,
+QUIT,     LOOK,     MODE,     SAY,   
+TELL,     EMOTE,              PEMOTE,   ECHO,
 GO,       IGNALL,   PROMPT,   DESC,   INPHRASE,
 OUTPHRASE,PUBCOM,   PRIVCOM,  LETMEIN,INVITE,
 TOPIC,    MOVE,     BCAST,    WHO,    PEOPLE,
@@ -245,30 +265,30 @@ PROMOTE,  DEMOTE,   LISTBANS, BAN,    UNBAN,
 VIS,      INVIS,    SITE,     WAKE,   WIZSHOUT,
 MUZZLE,   UNMUZZLE, MAP,      LOGGING,MINLOGIN,
 SYSTEM,   CHARECHO, CLEARLINE,FIX,    UNFIX,
-VIEWLOG,  ACCREQ,   REVCLR,
+VIEWLOG,  ACCREQ,   REVCLR,   
 /*
 CREATE, DESTROY,
 MYCLONES, ALLCLONES,SWITCH,   CSAY,   CHEAR,
 */
 RSTAT,    SWBAN,    AFK,      CLS,    COLOUR,
-IGNSHOUT, IGNTELL,  SUICIDE,  DELETE, REBOOT,
-RECOUNT,  REVTELL,  DOC,      STO,    ROOM,
+          IGNTELL,  SUICIDE,  DELETE, REBOOT,
+RECOUNT,  REVTELL,  DOC,      STO,    ROOM, 
 PATH,     LEVEL,    HULK,     UNDO,   ASPECT,
 JOIN,     MACRO,    SEE,      SEND
 } com_num;
 
 
-/* These are the minimum levels at which the commands can be executed.
+/* These are the minimum levels at which the commands can be executed. 
    Alter to suit. */
 int com_level[]={
-NEW, NEW, NEW, NEW, USER,
-APPR,USER,HELPER,HELPER,MAGHETTO,
+NEW, NEW, NEW, NEW,
+APPR,USER,HELPER,MAGHETTO,
 APPR,USER,NEW, APPR,HELPER,
 HELPER,USER,USER,HELPER,MAGHETTO,
 HELPER,PROMOTER,WIZ,NEW,WIZ,
 NEW, SYSOP, NEW,APPR, USER,
 WIZ, HELPER,APPR,USER, APPR,
-GOD, APPR, APPR,APPR,HELPER,
+SYSOP, APPR, APPR,APPR,HELPER,
 APPR,APPR,MAGHETTO,MAGHETTO,ARCH,
 ARCH,ARCH,ARCH,NEW,ARCH,
 PROMOTER,PROMOTER,MAGHETTO,ARCH,ARCH,
@@ -281,13 +301,13 @@ ARCH,ARCH,
 ARCH,USER,ARCH,ARCH,ARCH,
 */
 ARCH,ARCH,APPR,NEW,NEW,
-USER,USER,NEW,ARCH, SYSOP,
+     USER,NEW,ARCH, SYSOP,
 GOD, APPR,USER,APPR,HELPER,
 USER,APPR,GOD, ARCH,APPR,
-APPR,USER,HELPER,HELPER
+APPR,APPR,HELPER,HELPER
 };
 
-/*
+/* 
 Colcode values equal the following:
 RESET,BOLD,BLINK,REVERSE
 
@@ -332,7 +352,7 @@ char *offon[]={ "OFF","ON " };
 
 /* These MUST be in lower case - the contains_swearing() function converts
    the string to be checked to lower case before it compares it against
-   these. Also even if you dont want to ban any words you must keep the
+   these. Also even if you dont want to ban any words you must keep the 
    star as the first element in the array. */
 char *swear_words[]={
 "fuck","shit","cunt","*"
@@ -361,6 +381,6 @@ int charecho_def,time_out_maxlevel;
 time_t rs_announce,rs_which;
 UR_OBJECT rs_user;
 
+
 extern char *sys_errlist[];
 char *long_date();
-
